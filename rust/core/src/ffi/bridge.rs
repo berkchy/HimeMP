@@ -124,7 +124,13 @@ pub extern "system" fn Java_hime_mp_core_NativeBridge_init(
         let vm = Arc::new(env.get_java_vm().map_err(|e| Error::Jni(e.to_string()))?);
         let listener = Arc::new(Mutex::new(None));
         let events = Arc::new(JniEventSink::new(vm.clone(), listener));
-        let factory = Arc::new(AndroidSinkFactory::new(vm.clone()));
+        let class = env
+            .find_class("hime/mp/core/NativeSinkFactory")
+            .map_err(|e| Error::Jni(e.to_string()))?;
+        let sink_class = env
+            .new_global_ref(class)
+            .map_err(|e| Error::Jni(e.to_string()))?;
+        let factory = Arc::new(AndroidSinkFactory::new(vm.clone(), sink_class));
         let app = App::init(&directory, factory, Some(events.clone()))?;
         APP.set(app)
             .map_err(|_| Error::Invalid("native core already initialized".into()))?;

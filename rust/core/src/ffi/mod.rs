@@ -2,7 +2,7 @@ mod bridge;
 
 use crate::error::{Error, Result};
 use crate::playback::{AudioSink, AudioSinkFactory, EventSink};
-use jni::objects::{GlobalRef, JByteArray, JObject, JValue};
+use jni::objects::{GlobalRef, JByteArray, JClass, JObject, JValue};
 use jni::{AttachGuard, JavaVM};
 use std::sync::{Arc, Mutex};
 
@@ -23,11 +23,12 @@ fn take_exception(env: &mut jni::JNIEnv<'_>) -> Result<()> {
 
 pub struct AndroidSinkFactory {
     vm: Arc<JavaVM>,
+    sink_class: GlobalRef,
 }
 
 impl AndroidSinkFactory {
-    pub fn new(vm: Arc<JavaVM>) -> Self {
-        Self { vm }
+    pub fn new(vm: Arc<JavaVM>, sink_class: GlobalRef) -> Self {
+        Self { vm, sink_class }
     }
 }
 
@@ -37,9 +38,7 @@ impl AudioSinkFactory for AndroidSinkFactory {
             .vm
             .attach_current_thread()
             .map_err(|e| Error::Jni(e.to_string()))?;
-        let class = env
-            .find_class("hime/mp/core/NativeSinkFactory")
-            .map_err(|e| Error::Jni(e.to_string()))?;
+        let class = unsafe { JClass::from_raw(self.sink_class.as_obj().as_raw()) };
         let rate = sample_rate.clamp(8_000, 192_000);
         let channel_count = channels.clamp(1, 2);
         let result = env.call_static_method(

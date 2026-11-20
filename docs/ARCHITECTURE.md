@@ -42,6 +42,7 @@ The engine emits a full state snapshot every 250 ms and immediately after comman
 - All filesystem scanning, tag parsing and artwork extraction run off the UI thread (`Dispatchers.IO` in Kotlin, scanner/decoder threads in Rust).
 - The Rust engine owns its state; Kotlin never mutates native state directly, it sends commands through an `mpsc::Sender`.
 - `JNIEnv` is never stored. Each callback attaches the current thread via `JavaVM::attach_current_thread()`. JNI globals (`GlobalRef`) are owned by Rust and released in `Drop`.
+- `FindClass` is only called on the main thread during `NativeBridge.init`. The resulting `NativeSinkFactory` class is kept as a `GlobalRef` and reused by the playback thread, because `FindClass` on an attached native thread uses the system class loader and cannot find app classes (`ClassNotFoundException`).
 - `PlaybackRuntime::shutdown()` sends `Shutdown` and joins the playback thread before the app exits; the listener global ref is cleared afterwards.
 - Stores write JSON atomically (write to `.tmp`, then rename) so state survives crashes.
 
