@@ -107,11 +107,6 @@ class PlaybackService : Service() {
         override fun onSkipToPrevious() = PlaybackController.previous()
 
         override fun onSeekTo(pos: Long) = PlaybackController.seek(pos)
-
-        override fun onSetRepeatMode(repeatMode: Int) = PlaybackController.setRepeat(repeatMode)
-
-        override fun onShuffleModeEnabledChanged(shuffleModeEnabled: Boolean) =
-            PlaybackController.setShuffle(shuffleModeEnabled)
     }
 
     private fun requestFocus() {
@@ -183,6 +178,11 @@ class PlaybackService : Service() {
                     android.media.session.PlaybackState.ACTION_SKIP_TO_NEXT or
                     android.media.session.PlaybackState.ACTION_SKIP_TO_PREVIOUS or
                     android.media.session.PlaybackState.ACTION_SEEK_TO
+            )
+            .setRepeatMode(state.repeat)
+            .setShuffleMode(
+                if (state.shuffle) android.media.session.PlaybackState.SHUFFLE_MODE_ALL
+                else android.media.session.PlaybackState.SHUFFLE_MODE_NONE
             )
             .build()
         session.setPlaybackState(playbackState)

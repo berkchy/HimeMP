@@ -1,12 +1,13 @@
 package com.berkchy.himemp.ui.components
 
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
@@ -22,23 +23,22 @@ fun AlbumArt(
     modifier: Modifier = Modifier,
     corner: Dp = 8.dp,
 ) {
-    val bitmap by produceState<android.graphics.Bitmap?>(initialValue = null, key1 = track?.id) {
-        value = track?.let { ArtCache.cached(it) ?: ArtCache.load(it) }
+    val art by produceState<ImageBitmap?>(initialValue = null, key1 = track?.id) {
+        value = track?.let { ArtCache.cached(it) ?: ArtCache.load(it) }?.asImageBitmap()
     }
-    val imageModifier = modifier
-        .clip(RoundedCornerShape(corner))
-    if (bitmap != null) {
+    val image = art
+    if (image != null) {
         Image(
-            bitmap = bitmap!!.asImageBitmap(),
+            bitmap = image,
             contentDescription = track?.title,
-            modifier = imageModifier,
+            modifier = modifier.clip(RoundedCornerShape(corner)),
             contentScale = ContentScale.Crop,
         )
     } else {
         Image(
             painter = painterResource(R.drawable.ic_placeholder_album),
             contentDescription = null,
-            modifier = imageModifier,
+            modifier = modifier.clip(RoundedCornerShape(corner)),
             contentScale = ContentScale.Crop,
         )
     }

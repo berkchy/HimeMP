@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -67,7 +68,7 @@ fun LibraryScreen(
                             .fillMaxWidth()
                             .padding(horizontal = 16.dp, vertical = 8.dp),
                     ) {
-                        AlbumArt(cover, modifier = androidx.compose.foundation.layout.size(52.dp))
+                        AlbumArt(cover, modifier = Modifier.size(52.dp))
                         Column(Modifier.padding(start = 12.dp)) {
                             Text(album.title, style = MaterialTheme.typography.titleMedium)
                             Text(
@@ -90,7 +91,7 @@ fun LibraryScreen(
                 }
             }
             3 -> LazyColumn(modifier = Modifier.weight(1f)) {
-                items(folders.size, key = { it.path }) { index ->
+                items(folders.size, key = { folders[it].path }) { index ->
                     val folder = folders[index]
                     Text(
                         "${folder.name} — ${folder.trackCount} tracks",
