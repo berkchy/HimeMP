@@ -7,7 +7,6 @@ import android.util.LruCache
 import com.berkchy.himemp.core.Track
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import java.util.LruCache
 
 object ArtCache {
     private val maxKb = (Runtime.getRuntime().maxMemory() / 1024 / 8).toInt().coerceAtLeast(4096)
