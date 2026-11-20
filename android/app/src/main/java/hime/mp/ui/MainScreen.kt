@@ -105,7 +105,7 @@ fun MainScreen() {
         reducedMotion = settingsMap["reducedMotion"]?.toBoolean() ?: false,
     ) {
         Scaffold(
-            snackbarHost = { host -> SnackbarHost(host) { data -> Snackbar(data) } },
+            snackbarHost = { SnackbarHost(snackbarHostState) { data -> Snackbar(data) } },
             bottomBar = {
                 Column {
                     MiniPlayer(onExpand = { fullPlayer = true })
