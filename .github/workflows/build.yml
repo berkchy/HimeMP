@@ -61,7 +61,8 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: rust/core
-      - uses: taiki-e/install-action@cargo-ndk
+      - name: Install cargo-ndk
+        run: cargo install cargo-ndk --locked
       - name: Build Rust native libraries into jniLibs
         working-directory: .
         run: |
