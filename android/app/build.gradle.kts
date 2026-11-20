@@ -37,7 +37,7 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            if (System.getenv("HIMEMP_KEYSTORE") != null) {
+            if (!System.getenv("HIMEMP_KEYSTORE").isNullOrBlank()) {
                 signingConfig = signingConfigs.getByName("release")
             }
         }
