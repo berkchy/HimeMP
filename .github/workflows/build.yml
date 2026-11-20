@@ -79,14 +79,19 @@ jobs:
       - name: Assemble debug APK
         working-directory: android
         run: ./gradlew assembleDebug
-      - name: Assemble release APK
+      - name: Assemble signed release APK
         working-directory: android
         env:
-          HIMEMP_KEYSTORE: ${{ secrets.HIMEMP_KEYSTORE }}
+          HIMEMP_KEYSTORE_B64: ${{ secrets.HIMEMP_KEYSTORE_B64 }}
           HIMEMP_STORE_PASSWORD: ${{ secrets.HIMEMP_STORE_PASSWORD }}
           HIMEMP_KEY_ALIAS: ${{ secrets.HIMEMP_KEY_ALIAS }}
           HIMEMP_KEY_PASSWORD: ${{ secrets.HIMEMP_KEY_PASSWORD }}
-        run: ./gradlew assembleRelease -PversionCode="${GITHUB_RUN_NUMBER}" -PversionName="${GITHUB_REF_NAME}"
+        run: |
+          if [ -n "$HIMEMP_KEYSTORE_B64" ]; then
+            printf '%s' "$HIMEMP_KEYSTORE_B64" | base64 --decode > "$RUNNER_TEMP/himemp-release.jks"
+            export HIMEMP_KEYSTORE="$RUNNER_TEMP/himemp-release.jks"
+          fi
+          ./gradlew assembleRelease -PversionCode="${GITHUB_RUN_NUMBER}" -PversionName="${GITHUB_REF_NAME}"
       - name: Upload APK artifacts
         uses: actions/upload-artifact@v4
         with:

@@ -68,7 +68,7 @@ Version overrides for release builds:
 
 ## Signing and releases
 
-Set repository secrets `HIMEMP_KEYSTORE` (base64 or absolute path available to the runner), `HIMEMP_STORE_PASSWORD`, `HIMEMP_KEY_ALIAS` and `HIMEMP_KEY_PASSWORD` to sign release APKs. Without them the release APK is unsigned. The workflow:
+Release APKs are signed in CI. The repository secrets are `HIMEMP_KEYSTORE_B64` (base64 of the JKS keystore), `HIMEMP_STORE_PASSWORD`, `HIMEMP_KEY_ALIAS` and `HIMEMP_KEY_PASSWORD`. The workflow decodes the keystore into the runner temp directory and never checks it into the repository. Without these secrets the release APK is unsigned. The workflow:
 
 - runs Rust fmt/clippy/tests plus cross-target checks on every push and PR;
 - builds three ABI native libraries with `cargo-ndk`, then debug + release APKs;
