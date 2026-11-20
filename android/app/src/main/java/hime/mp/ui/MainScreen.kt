@@ -121,7 +121,11 @@ fun MainScreen() {
                                 selected = destination == route,
                                 onClick = {
                                     destination = route
-                                    if (route != "playlists") selectedPlaylist = null
+                                    if (route == "playlists") {
+                                        playlists.refresh()
+                                    } else {
+                                        selectedPlaylist = null
+                                    }
                                 },
                                 icon = { Icon(icon, contentDescription = route) },
                                 label = { Text(route.replaceFirstChar { it.uppercase() }) },
