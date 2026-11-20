@@ -222,7 +222,7 @@ fun MainScreen() {
 }
 
 private fun play(tracks: List<Track>, index: Int) {
-    PlaybackController.playQueue(tracks.map { it.id }, index)
+    PlaybackController.playTracks(tracks, index)
 }
 
 private fun queueNext(track: Track, currentIndex: Int) {

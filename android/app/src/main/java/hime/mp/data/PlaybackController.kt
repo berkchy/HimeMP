@@ -57,7 +57,7 @@ object PlaybackController : NativeBridge.EventListener {
                     _state.value = PlaybackState.from(payload)
                     syncTrack(_state.value.trackId)
                 }
-                "trackChanged" -> syncTrack(_state.value.trackId, force = true)
+                "trackChanged" -> syncTrack(payload.ifBlank { _state.value.trackId }, force = true)
                 "error" -> _messages.tryEmit(payload)
                 "fatal" -> CrashHandler.reportFatal(payload)
                 "sleepTimerFired" -> _messages.tryEmit("Sleep timer reached")
@@ -66,14 +66,16 @@ object PlaybackController : NativeBridge.EventListener {
     }
 
     private fun syncTrack(id: String?, force: Boolean = false) {
-        if (!force && id == lastTrackId) return
-        lastTrackId = id
         if (id == null) {
+            lastTrackId = null
             _currentTrack.value = null
             return
         }
+        if (!force && id == lastTrackId && _currentTrack.value != null) return
+        lastTrackId = id
         scope.launch(Dispatchers.IO) {
-            _currentTrack.value = runCatching { MusicRepository.track(id) }.getOrNull()
+            val fetched = runCatching { MusicRepository.track(id) }.getOrNull()
+            if (fetched != null) _currentTrack.value = fetched
         }
     }
 
@@ -92,6 +94,13 @@ object PlaybackController : NativeBridge.EventListener {
 
     fun updateSetting(key: String, value: String) {
         _settings.value = _settings.value + (key to value)
+    }
+
+    fun playTracks(tracks: List<Track>, index: Int) {
+        val track = tracks.getOrNull(index) ?: return
+        _currentTrack.value = track
+        lastTrackId = track.id
+        playQueue(tracks.map { it.id }, index)
     }
 
     fun playQueue(ids: List<String>, index: Int) {

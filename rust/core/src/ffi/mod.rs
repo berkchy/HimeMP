@@ -140,6 +140,7 @@ impl AudioSink for AndroidAudioTrackSink {
             .map_err(|e| Error::Jni(e.to_string()))?;
         take_exception(&mut env)?;
         let mut offset = 0usize;
+        let mut zeros = 0u32;
         while offset < bytes.len() {
             let count = (bytes.len() - offset) as i32;
             let value = env.call_method(
@@ -157,9 +158,24 @@ impl AudioSink for AndroidAudioTrackSink {
                 .map_err(|e| Error::Jni(e.to_string()))?
                 .i()
                 .map_err(|e| Error::Jni(e.to_string()))?;
-            if written <= 0 {
-                return Err(Error::Jni("AudioTrack.write returned no progress".into()));
+            if written < 0 {
+                return Err(Error::Jni(format!("AudioTrack.write failed ({written})")));
             }
+            if written == 0 {
+                zeros += 1;
+                if zeros == 5 {
+                    let _ = env.call_method(self.track.as_obj(), "play", "()V", &[]);
+                    let _ = env.exception_clear();
+                }
+                if zeros > 200 {
+                    return Err(Error::Jni(
+                        "AudioTrack.write made no progress after repeated retries".into(),
+                    ));
+                }
+                std::thread::sleep(std::time::Duration::from_millis(2));
+                continue;
+            }
+            zeros = 0;
             offset += written as usize;
         }
         Ok(())

@@ -192,12 +192,11 @@ impl Engine {
                     .write()
                     .unwrap_or_else(|poisoned| poisoned.into_inner())
                     .playing = false;
-                if let Some(decoder) = self.decoder.take() {
-                    drop(decoder);
+                self.decoder = None;
+                if let Some(mut sink) = self.sink.take() {
+                    sink.close();
                 }
-                if let Some(sink) = self.sink.as_mut() {
-                    sink.flush();
-                }
+                self.sink_spec = None;
                 self.state
                     .write()
                     .unwrap_or_else(|poisoned| poisoned.into_inner())
@@ -464,7 +463,7 @@ impl Engine {
             state.position_ms = 0;
         }
         self.decoder = Some(decoder);
-        self.events.emit("trackChanged", "{}");
+        self.events.emit("trackChanged", &id);
         self.emit_state();
         Ok(())
     }
