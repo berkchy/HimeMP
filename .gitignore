@@ -1,0 +1,26 @@
+# Rust build artifacts
+rust/core/target/
+**/*.rs.bk
+
+# Gradle / Android build outputs
+.gradle/
+local.properties
+*.iml
+.idea/
+android/build/
+android/app/build/
+android/captures/
+android/app/src/main/jniLibs/**/*.so
+!android/app/src/main/jniLibs/.gitkeep
+
+# Signing material and local secrets (never commit)
+*.keystore
+*.jks
+keystore.properties
+.env
+*.pem
+*.p12
+
+# OS / editor
+.DS_Store
+*.swp
