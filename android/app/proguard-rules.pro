@@ -1,7 +1,7 @@
--keep class com.berkchy.himemp.core.NativeBridge { *; }
--keep class com.berkchy.himemp.core.NativeSinkFactory { *; }
--keep class com.berkchy.himemp.core.NativeBridge$EventListener { *; }
+-keep class hime.mp.core.NativeBridge { *; }
+-keep class hime.mp.core.NativeSinkFactory { *; }
+-keep class hime.mp.core.NativeBridge$EventListener { *; }
 -keepclasseswithmembernames class * {
     native <methods>;
 }
--keep class com.berkchy.himemp.data.model.** { *; }
+-keep class hime.mp.data.model.** { *; }

@@ -2,8 +2,8 @@
 
 ## Native contract (JNI)
 
-Class: `com.berkchy.himemp.core.NativeBridge`; exported symbols follow
-`Java_com_berkchy_himemp_core_NativeBridge_<method>`.
+Class: `hime.mp.core.NativeBridge`; exported symbols follow
+`Java_hime_mp_core_NativeBridge_<method>`.
 
 | Group | Methods | Return |
 | --- | --- | --- |

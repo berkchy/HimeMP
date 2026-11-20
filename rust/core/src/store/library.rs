@@ -245,6 +245,16 @@ impl LibraryStore {
         tracks
     }
 
+    pub fn remove_tracks(&mut self, ids: &[String]) -> Result<usize> {
+        let before = self.tracks.len();
+        self.tracks.retain(|track| !ids.contains(&track.id));
+        let removed = before - self.tracks.len();
+        if removed > 0 {
+            self.save()?;
+        }
+        Ok(removed)
+    }
+
     pub fn set_favorite(&mut self, id: &str, favorite: bool) -> Result<()> {
         if let Some(track) = self.find_mut(id) {
             track.favorite = favorite;

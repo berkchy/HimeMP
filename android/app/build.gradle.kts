@@ -8,11 +8,11 @@ val releaseVersionName: String = providers.gradleProperty("versionName").orNull 
 val releaseVersionCode: Int = providers.gradleProperty("versionCode").orNull?.toIntOrNull() ?: 1
 
 android {
-    namespace = "com.berkchy.himemp"
+    namespace = "hime.mp"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.berkchy.himemp"
+        applicationId = "hime.mp"
         minSdk = 26
         targetSdk = 35
         versionCode = releaseVersionCode

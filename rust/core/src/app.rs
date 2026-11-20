@@ -51,7 +51,11 @@ impl App {
     }
 
     pub fn handle(&self) -> EngineHandle {
-        self.runtime.lock().unwrap().handle.clone()
+        self.runtime
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .handle
+            .clone()
     }
 
     pub fn json<T: Serialize>(&self, value: &T) -> String {

@@ -6,6 +6,21 @@ use jni::objects::{GlobalRef, JByteArray, JObject, JValue};
 use jni::{AttachGuard, JavaVM};
 use std::sync::{Arc, Mutex};
 
+fn take_exception(env: &mut jni::JNIEnv<'_>) -> Result<()> {
+    if env
+        .exception_check()
+        .map_err(|e| Error::Jni(e.to_string()))?
+    {
+        let _ = env.exception_describe();
+        env.exception_clear()
+            .map_err(|e| Error::Jni(e.to_string()))?;
+        return Err(Error::Jni(
+            "Java exception raised during native audio call".into(),
+        ));
+    }
+    Ok(())
+}
+
 pub struct AndroidSinkFactory {
     vm: Arc<JavaVM>,
 }
@@ -23,18 +38,18 @@ impl AudioSinkFactory for AndroidSinkFactory {
             .attach_current_thread()
             .map_err(|e| Error::Jni(e.to_string()))?;
         let class = env
-            .find_class("com/berkchy/himemp/core/NativeSinkFactory")
+            .find_class("hime/mp/core/NativeSinkFactory")
             .map_err(|e| Error::Jni(e.to_string()))?;
-        let track = env
-            .call_static_method(
-                class,
-                "create",
-                "(II)Ljava/lang/Object;",
-                &[
-                    JValue::Int(sample_rate as i32),
-                    JValue::Int(channels as i32),
-                ],
-            )
+        let rate = sample_rate.clamp(8_000, 192_000);
+        let channel_count = channels.clamp(1, 2);
+        let result = env.call_static_method(
+            class,
+            "create",
+            "(II)Ljava/lang/Object;",
+            &[JValue::Int(rate as i32), JValue::Int(channel_count as i32)],
+        );
+        take_exception(&mut env)?;
+        let track = result
             .map_err(|e| Error::Jni(e.to_string()))?
             .l()
             .map_err(|e| Error::Jni(e.to_string()))?;
@@ -124,20 +139,22 @@ impl AudioSink for AndroidAudioTrackSink {
         };
         env.set_byte_array_region(&byte_array, 0, raw)
             .map_err(|e| Error::Jni(e.to_string()))?;
+        take_exception(&mut env)?;
         let mut offset = 0usize;
         while offset < bytes.len() {
             let count = (bytes.len() - offset) as i32;
-            let written = env
-                .call_method(
-                    self.track.as_obj(),
-                    "write",
-                    "([BII)I",
-                    &[
-                        JValue::Object(array),
-                        JValue::Int(offset as i32),
-                        JValue::Int(count),
-                    ],
-                )
+            let value = env.call_method(
+                self.track.as_obj(),
+                "write",
+                "([BII)I",
+                &[
+                    JValue::Object(array),
+                    JValue::Int(offset as i32),
+                    JValue::Int(count),
+                ],
+            );
+            take_exception(&mut env)?;
+            let written = value
                 .map_err(|e| Error::Jni(e.to_string()))?
                 .i()
                 .map_err(|e| Error::Jni(e.to_string()))?;
@@ -181,17 +198,26 @@ impl JniEventSink {
     }
 
     pub fn set_listener(&self, listener: GlobalRef) {
-        *self.listener.lock().unwrap() = Some(listener);
+        *self
+            .listener
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(listener);
     }
 
     pub fn clear_listener(&self) {
-        *self.listener.lock().unwrap() = None;
+        *self
+            .listener
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = None;
     }
 }
 
 impl EventSink for JniEventSink {
     fn emit(&self, event: &str, payload: &str) {
-        let guard = self.listener.lock().unwrap();
+        let guard = self
+            .listener
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         let Some(listener) = guard.as_ref() else {
             return;
         };

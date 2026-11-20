@@ -93,6 +93,13 @@ impl PlaylistStore {
         self.save()
     }
 
+    pub fn remove_track_from_all(&mut self, track_id: &str) -> Result<()> {
+        for playlist in &mut self.playlists {
+            playlist.track_ids.retain(|id| id != track_id);
+        }
+        self.save()
+    }
+
     pub fn reorder(&mut self, id: &str, from: usize, to: usize) -> Result<()> {
         let playlist = self
             .playlists

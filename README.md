@@ -5,12 +5,14 @@ A lightweight Android music player: a small **Rust** core handles library indexi
 ## Highlights
 
 - Folder-scoped library via Android SAF (add / remove folders, incremental or full rescan).
-- Tracks / Albums / Artists / Folders views, search, playlists, Liked songs and Recently played.
+- Tracks / Albums / Artists / Folders views, search, playlists, Liked songs, Recently played and Recently added.
+- Long-press selection mode in Tracks with checkboxes and batch actions (favorite, queue, add to playlist, remove from library); sort options and expanded search.
 - Rust decoding engine (MP3, FLAC, OGG, WAV, M4A/AAC) streaming PCM into Android `AudioTrack` over JNI.
 - Gapless-style track transitions, repeat off/all/one, shuffle, queue reordering, sleep timer, playback speed.
 - Material 3 light/dark/dynamic color, reduced-motion option, animated icons and mini↔full player transition.
 - Foreground service with a colorized `MediaStyle` notification, media buttons, audio-focus and headset/Bluetooth handling.
 - State (last track, position, queue, settings, playlists) persisted by the Rust core across restarts.
+- Crash recovery: fatal JVM/native errors are saved, the app restarts automatically and shows an error screen with the stack trace (copy / restart / close).
 
 ## Repository layout
 

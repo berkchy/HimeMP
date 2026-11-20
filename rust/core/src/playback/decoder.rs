@@ -45,6 +45,8 @@ pub struct PcmDecoder {
     track_id: u32,
     pub sample_rate: u32,
     pub channels: u16,
+    /// Channels handed to the audio sink; multichannel input is folded to stereo.
+    pub output_channels: u16,
     pub duration_ms: u64,
     pub frames_emitted: u64,
 }
@@ -94,6 +96,7 @@ impl PcmDecoder {
             track_id,
             sample_rate,
             channels,
+            output_channels: channels.min(2),
             duration_ms,
             frames_emitted: 0,
         })
@@ -123,11 +126,21 @@ impl PcmDecoder {
                 Err(symphonia::core::errors::Error::DecodeError(_)) => continue,
                 Err(error) => return Err(Error::Decode(error.to_string())),
             };
-            self.sample_rate = decoded.spec().rate.max(1);
+            self.sample_rate = decoded.spec().rate.clamp(8_000, 192_000);
             self.channels = decoded.spec().channels.count().max(1) as u16;
-            let before = out.len();
-            append_interleaved(decoded, out);
-            let frames = (out.len() - before) / self.channels as usize;
+            self.output_channels = self.channels.min(2);
+            let mut decoded_samples = Vec::new();
+            append_interleaved(decoded, &mut decoded_samples);
+            let frames = decoded_samples.len() / self.channels as usize;
+            if self.channels > 2 {
+                for frame in 0..frames {
+                    let base = frame * self.channels as usize;
+                    out.push(decoded_samples[base]);
+                    out.push(decoded_samples[base + 1]);
+                }
+            } else {
+                out.extend_from_slice(&decoded_samples);
+            }
             self.frames_emitted += frames as u64;
             return Ok(frames);
         }

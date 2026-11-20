@@ -43,6 +43,23 @@ fn read_string(env: &mut JNIEnv<'_>, value: &JString<'_>) -> Result<String> {
         .into())
 }
 
+fn panic_payload(payload: Box<dyn std::any::Any + Send>) -> String {
+    if let Some(message) = payload.downcast_ref::<String>() {
+        message.clone()
+    } else if let Some(message) = payload.downcast_ref::<&str>() {
+        (*message).to_string()
+    } else {
+        "unknown native panic".to_string()
+    }
+}
+
+fn fatal(message: String) {
+    if let Some(runtime) = JNI.get() {
+        runtime.events.emit("fatal", &message);
+    }
+    log::error!("fatal native error: {message}");
+}
+
 fn error_json(error: &Error) -> String {
     format!(
         "{{\"error\":{}}}",
@@ -54,10 +71,18 @@ fn reply(
     env: &mut JNIEnv<'_>,
     action: impl FnOnce(&mut JNIEnv<'_>, &Arc<App>) -> Result<String>,
 ) -> jstring {
-    let result = APP
-        .get()
-        .ok_or_else(|| Error::Invalid("native core not initialized".into()))
-        .and_then(|app| action(env, app));
+    let result = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        APP.get()
+            .ok_or_else(|| Error::Invalid("native core not initialized".into()))
+            .and_then(|app| action(env, app))
+    })) {
+        Ok(result) => result,
+        Err(payload) => {
+            let message = panic_payload(payload);
+            fatal(message.clone());
+            Err(Error::Store(message))
+        }
+    };
     match result {
         Ok(value) => env
             .new_string(value)
@@ -80,12 +105,16 @@ fn json<T: Serialize>(value: &T) -> Result<String> {
 
 fn fire(command: impl FnOnce() -> Command) {
     if let Some(app) = APP.get() {
-        app.handle().send(command());
+        if let Err(payload) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            app.handle().send(command())
+        })) {
+            fatal(panic_payload(payload));
+        }
     }
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_berkchy_himemp_core_NativeBridge_init(
+pub extern "system" fn Java_hime_mp_core_NativeBridge_init(
     mut env: JNIEnv<'_>,
     _class: JClass<'_>,
     files_dir: JString<'_>,
@@ -113,12 +142,15 @@ pub extern "system" fn Java_com_berkchy_himemp_core_NativeBridge_init(
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_berkchy_himemp_core_NativeBridge_shutdown(
+pub extern "system" fn Java_hime_mp_core_NativeBridge_shutdown(
     _env: JNIEnv<'_>,
     _class: JClass<'_>,
 ) {
     if let Some(app) = APP.get() {
-        app.runtime.lock().unwrap().shutdown();
+        app.runtime
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .shutdown();
     }
     if let Some(runtime) = JNI.get() {
         runtime.events.clear_listener();
@@ -126,7 +158,7 @@ pub extern "system" fn Java_com_berkchy_himemp_core_NativeBridge_shutdown(
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_berkchy_himemp_core_NativeBridge_setEventListener(
+pub extern "system" fn Java_hime_mp_core_NativeBridge_setEventListener(
     env: JNIEnv<'_>,
     _class: JClass<'_>,
     listener: JObject<'_>,
@@ -144,52 +176,69 @@ pub extern "system" fn Java_com_berkchy_himemp_core_NativeBridge_setEventListene
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_berkchy_himemp_core_NativeBridge_getAllowedFolders(
+pub extern "system" fn Java_hime_mp_core_NativeBridge_getAllowedFolders(
     mut env: JNIEnv<'_>,
     _class: JClass<'_>,
 ) -> jstring {
     reply(&mut env, |env, app| {
-        json(&app.library.lock().unwrap().allowed_folders)
+        json(
+            &app.library
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .allowed_folders,
+        )
     })
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_berkchy_himemp_core_NativeBridge_setAllowedFolders(
+pub extern "system" fn Java_hime_mp_core_NativeBridge_setAllowedFolders(
     mut env: JNIEnv<'_>,
     _class: JClass<'_>,
     folders: JObjectArray<'_>,
 ) -> jstring {
     reply(&mut env, |env, app| {
         let folders = read_strings(env, folders)?;
-        app.library.lock().unwrap().set_allowed_folders(folders)?;
+        app.library
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .set_allowed_folders(folders)?;
         json(&serde_json::json!({ "ok": true }))
     })
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_berkchy_himemp_core_NativeBridge_scan(
+pub extern "system" fn Java_hime_mp_core_NativeBridge_scan(
     mut env: JNIEnv<'_>,
     _class: JClass<'_>,
     incremental: jboolean,
 ) -> jstring {
     reply(&mut env, |env, app| {
-        let report = app.library.lock().unwrap().scan(incremental != 0)?;
+        let report = app
+            .library
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .scan(incremental != 0)?;
         json(&report)
     })
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_berkchy_himemp_core_NativeBridge_getTracks(
+pub extern "system" fn Java_hime_mp_core_NativeBridge_getTracks(
     mut env: JNIEnv<'_>,
     _class: JClass<'_>,
 ) -> jstring {
     reply(&mut env, |env, app| {
-        json(&app.library.lock().unwrap().tracks())
+        json(
+            &app.library
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .tracks(),
+        )
     })
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_berkchy_himemp_core_NativeBridge_getTrack(
+pub extern "system" fn Java_hime_mp_core_NativeBridge_getTrack(
     mut env: JNIEnv<'_>,
     _class: JClass<'_>,
     id: JString<'_>,
@@ -199,7 +248,7 @@ pub extern "system" fn Java_com_berkchy_himemp_core_NativeBridge_getTrack(
         let track = app
             .library
             .lock()
-            .unwrap()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
             .find(&id)
             .cloned()
             .ok_or_else(|| Error::NotFound(id))?;
@@ -208,71 +257,101 @@ pub extern "system" fn Java_com_berkchy_himemp_core_NativeBridge_getTrack(
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_berkchy_himemp_core_NativeBridge_search(
+pub extern "system" fn Java_hime_mp_core_NativeBridge_search(
     mut env: JNIEnv<'_>,
     _class: JClass<'_>,
     query: JString<'_>,
 ) -> jstring {
     reply(&mut env, |env, app| {
         let query = read_string(env, &query)?;
-        json(&app.library.lock().unwrap().search(&query))
+        json(
+            &app.library
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .search(&query),
+        )
     })
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_berkchy_himemp_core_NativeBridge_getAlbums(
+pub extern "system" fn Java_hime_mp_core_NativeBridge_getAlbums(
     mut env: JNIEnv<'_>,
     _class: JClass<'_>,
 ) -> jstring {
     reply(&mut env, |env, app| {
-        json(&app.library.lock().unwrap().albums())
+        json(
+            &app.library
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .albums(),
+        )
     })
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_berkchy_himemp_core_NativeBridge_getArtists(
+pub extern "system" fn Java_hime_mp_core_NativeBridge_getArtists(
     mut env: JNIEnv<'_>,
     _class: JClass<'_>,
 ) -> jstring {
     reply(&mut env, |env, app| {
-        json(&app.library.lock().unwrap().artists())
+        json(
+            &app.library
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .artists(),
+        )
     })
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_berkchy_himemp_core_NativeBridge_getFolders(
+pub extern "system" fn Java_hime_mp_core_NativeBridge_getFolders(
     mut env: JNIEnv<'_>,
     _class: JClass<'_>,
 ) -> jstring {
     reply(&mut env, |env, app| {
-        json(&app.library.lock().unwrap().folders())
+        json(
+            &app.library
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .folders(),
+        )
     })
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_berkchy_himemp_core_NativeBridge_getPlaylists(
+pub extern "system" fn Java_hime_mp_core_NativeBridge_getPlaylists(
     mut env: JNIEnv<'_>,
     _class: JClass<'_>,
 ) -> jstring {
     reply(&mut env, |env, app| {
-        json(&app.playlists.lock().unwrap().all())
+        json(
+            &app.playlists
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .all(),
+        )
     })
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_berkchy_himemp_core_NativeBridge_createPlaylist(
+pub extern "system" fn Java_hime_mp_core_NativeBridge_createPlaylist(
     mut env: JNIEnv<'_>,
     _class: JClass<'_>,
     name: JString<'_>,
 ) -> jstring {
     reply(&mut env, |env, app| {
         let name = read_string(env, &name)?;
-        json(&app.playlists.lock().unwrap().create(&name)?)
+        json(
+            &app.playlists
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .create(&name)?,
+        )
     })
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_berkchy_himemp_core_NativeBridge_renamePlaylist(
+pub extern "system" fn Java_hime_mp_core_NativeBridge_renamePlaylist(
     mut env: JNIEnv<'_>,
     _class: JClass<'_>,
     id: JString<'_>,
@@ -281,26 +360,32 @@ pub extern "system" fn Java_com_berkchy_himemp_core_NativeBridge_renamePlaylist(
     reply(&mut env, |env, app| {
         let id = read_string(env, &id)?;
         let name = read_string(env, &name)?;
-        app.playlists.lock().unwrap().rename(&id, &name)?;
+        app.playlists
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .rename(&id, &name)?;
         json(&serde_json::json!({ "ok": true }))
     })
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_berkchy_himemp_core_NativeBridge_deletePlaylist(
+pub extern "system" fn Java_hime_mp_core_NativeBridge_deletePlaylist(
     mut env: JNIEnv<'_>,
     _class: JClass<'_>,
     id: JString<'_>,
 ) -> jstring {
     reply(&mut env, |env, app| {
         let id = read_string(env, &id)?;
-        app.playlists.lock().unwrap().delete(&id)?;
+        app.playlists
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .delete(&id)?;
         json(&serde_json::json!({ "ok": true }))
     })
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_berkchy_himemp_core_NativeBridge_addToPlaylist(
+pub extern "system" fn Java_hime_mp_core_NativeBridge_addToPlaylist(
     mut env: JNIEnv<'_>,
     _class: JClass<'_>,
     id: JString<'_>,
@@ -309,13 +394,16 @@ pub extern "system" fn Java_com_berkchy_himemp_core_NativeBridge_addToPlaylist(
     reply(&mut env, |env, app| {
         let id = read_string(env, &id)?;
         let track_ids = read_strings(env, track_ids)?;
-        app.playlists.lock().unwrap().add_tracks(&id, &track_ids)?;
+        app.playlists
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .add_tracks(&id, &track_ids)?;
         json(&serde_json::json!({ "ok": true }))
     })
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_berkchy_himemp_core_NativeBridge_removeFromPlaylist(
+pub extern "system" fn Java_hime_mp_core_NativeBridge_removeFromPlaylist(
     mut env: JNIEnv<'_>,
     _class: JClass<'_>,
     id: JString<'_>,
@@ -324,13 +412,16 @@ pub extern "system" fn Java_com_berkchy_himemp_core_NativeBridge_removeFromPlayl
     reply(&mut env, |env, app| {
         let id = read_string(env, &id)?;
         let track_id = read_string(env, &track_id)?;
-        app.playlists.lock().unwrap().remove_track(&id, &track_id)?;
+        app.playlists
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .remove_track(&id, &track_id)?;
         json(&serde_json::json!({ "ok": true }))
     })
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_berkchy_himemp_core_NativeBridge_reorderPlaylist(
+pub extern "system" fn Java_hime_mp_core_NativeBridge_reorderPlaylist(
     mut env: JNIEnv<'_>,
     _class: JClass<'_>,
     id: JString<'_>,
@@ -341,14 +432,14 @@ pub extern "system" fn Java_com_berkchy_himemp_core_NativeBridge_reorderPlaylist
         let id = read_string(env, &id)?;
         app.playlists
             .lock()
-            .unwrap()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
             .reorder(&id, from.max(0) as usize, to.max(0) as usize)?;
         json(&serde_json::json!({ "ok": true }))
     })
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_berkchy_himemp_core_NativeBridge_getPlaylistTracks(
+pub extern "system" fn Java_hime_mp_core_NativeBridge_getPlaylistTracks(
     mut env: JNIEnv<'_>,
     _class: JClass<'_>,
     id: JString<'_>,
@@ -358,11 +449,14 @@ pub extern "system" fn Java_com_berkchy_himemp_core_NativeBridge_getPlaylistTrac
         let ids = app
             .playlists
             .lock()
-            .unwrap()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
             .get(&id)
             .map(|playlist| playlist.track_ids.clone())
             .ok_or_else(|| Error::NotFound(id))?;
-        let library = app.library.lock().unwrap();
+        let library = app
+            .library
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         let tracks: Vec<_> = ids
             .iter()
             .filter_map(|track_id| library.find(track_id).cloned())
@@ -372,7 +466,7 @@ pub extern "system" fn Java_com_berkchy_himemp_core_NativeBridge_getPlaylistTrac
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_berkchy_himemp_core_NativeBridge_setFavorite(
+pub extern "system" fn Java_hime_mp_core_NativeBridge_setFavorite(
     mut env: JNIEnv<'_>,
     _class: JClass<'_>,
     id: JString<'_>,
@@ -382,34 +476,67 @@ pub extern "system" fn Java_com_berkchy_himemp_core_NativeBridge_setFavorite(
         let id = read_string(env, &id)?;
         app.library
             .lock()
-            .unwrap()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
             .set_favorite(&id, favorite != 0)?;
         json(&serde_json::json!({ "ok": true }))
     })
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_berkchy_himemp_core_NativeBridge_getFavorites(
+pub extern "system" fn Java_hime_mp_core_NativeBridge_removeFromLibrary(
     mut env: JNIEnv<'_>,
     _class: JClass<'_>,
+    ids: JObjectArray<'_>,
 ) -> jstring {
     reply(&mut env, |env, app| {
-        json(&app.library.lock().unwrap().favorites())
+        let ids = read_strings(env, ids)?;
+        for id in &ids {
+            app.playlists
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .remove_track_from_all(id)?;
+        }
+        let removed = app
+            .library
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .remove_tracks(&ids)?;
+        json(&serde_json::json!({ "removed": removed }))
     })
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_berkchy_himemp_core_NativeBridge_getRecentlyPlayed(
+pub extern "system" fn Java_hime_mp_core_NativeBridge_getFavorites(
     mut env: JNIEnv<'_>,
     _class: JClass<'_>,
 ) -> jstring {
     reply(&mut env, |env, app| {
-        json(&app.library.lock().unwrap().recently_played())
+        json(
+            &app.library
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .favorites(),
+        )
     })
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_berkchy_himemp_core_NativeBridge_setQueue(
+pub extern "system" fn Java_hime_mp_core_NativeBridge_getRecentlyPlayed(
+    mut env: JNIEnv<'_>,
+    _class: JClass<'_>,
+) -> jstring {
+    reply(&mut env, |env, app| {
+        json(
+            &app.library
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .recently_played(),
+        )
+    })
+}
+
+#[no_mangle]
+pub extern "system" fn Java_hime_mp_core_NativeBridge_setQueue(
     mut env: JNIEnv<'_>,
     _class: JClass<'_>,
     ids: JObjectArray<'_>,
@@ -423,7 +550,7 @@ pub extern "system" fn Java_com_berkchy_himemp_core_NativeBridge_setQueue(
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_berkchy_himemp_core_NativeBridge_queueAdd(
+pub extern "system" fn Java_hime_mp_core_NativeBridge_queueAdd(
     mut env: JNIEnv<'_>,
     _class: JClass<'_>,
     ids: JObjectArray<'_>,
@@ -437,7 +564,7 @@ pub extern "system" fn Java_com_berkchy_himemp_core_NativeBridge_queueAdd(
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_berkchy_himemp_core_NativeBridge_queueMove(
+pub extern "system" fn Java_hime_mp_core_NativeBridge_queueMove(
     mut env: JNIEnv<'_>,
     _class: JClass<'_>,
     from: jint,
@@ -451,7 +578,7 @@ pub extern "system" fn Java_com_berkchy_himemp_core_NativeBridge_queueMove(
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_berkchy_himemp_core_NativeBridge_queueRemove(
+pub extern "system" fn Java_hime_mp_core_NativeBridge_queueRemove(
     mut env: JNIEnv<'_>,
     _class: JClass<'_>,
     index: jint,
@@ -464,7 +591,7 @@ pub extern "system" fn Java_com_berkchy_himemp_core_NativeBridge_queueRemove(
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_berkchy_himemp_core_NativeBridge_queueClear(
+pub extern "system" fn Java_hime_mp_core_NativeBridge_queueClear(
     mut env: JNIEnv<'_>,
     _class: JClass<'_>,
 ) -> jstring {
@@ -475,47 +602,42 @@ pub extern "system" fn Java_com_berkchy_himemp_core_NativeBridge_queueClear(
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_berkchy_himemp_core_NativeBridge_getQueue(
+pub extern "system" fn Java_hime_mp_core_NativeBridge_getQueue(
     mut env: JNIEnv<'_>,
     _class: JClass<'_>,
 ) -> jstring {
-    reply(&mut env, |env, app| json(&app.state.read().unwrap().queue))
+    reply(&mut env, |env, app| {
+        json(
+            &app.state
+                .read()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .queue,
+        )
+    })
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_berkchy_himemp_core_NativeBridge_play(
-    _env: JNIEnv<'_>,
-    _class: JClass<'_>,
-) {
+pub extern "system" fn Java_hime_mp_core_NativeBridge_play(_env: JNIEnv<'_>, _class: JClass<'_>) {
     fire(|| Command::Play);
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_berkchy_himemp_core_NativeBridge_pause(
-    _env: JNIEnv<'_>,
-    _class: JClass<'_>,
-) {
+pub extern "system" fn Java_hime_mp_core_NativeBridge_pause(_env: JNIEnv<'_>, _class: JClass<'_>) {
     fire(|| Command::Pause);
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_berkchy_himemp_core_NativeBridge_stop(
-    _env: JNIEnv<'_>,
-    _class: JClass<'_>,
-) {
+pub extern "system" fn Java_hime_mp_core_NativeBridge_stop(_env: JNIEnv<'_>, _class: JClass<'_>) {
     fire(|| Command::Stop);
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_berkchy_himemp_core_NativeBridge_next(
-    _env: JNIEnv<'_>,
-    _class: JClass<'_>,
-) {
+pub extern "system" fn Java_hime_mp_core_NativeBridge_next(_env: JNIEnv<'_>, _class: JClass<'_>) {
     fire(|| Command::Next);
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_berkchy_himemp_core_NativeBridge_previous(
+pub extern "system" fn Java_hime_mp_core_NativeBridge_previous(
     _env: JNIEnv<'_>,
     _class: JClass<'_>,
 ) {
@@ -523,7 +645,7 @@ pub extern "system" fn Java_com_berkchy_himemp_core_NativeBridge_previous(
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_berkchy_himemp_core_NativeBridge_seek(
+pub extern "system" fn Java_hime_mp_core_NativeBridge_seek(
     _env: JNIEnv<'_>,
     _class: JClass<'_>,
     position_ms: jlong,
@@ -532,7 +654,7 @@ pub extern "system" fn Java_com_berkchy_himemp_core_NativeBridge_seek(
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_berkchy_himemp_core_NativeBridge_setRepeat(
+pub extern "system" fn Java_hime_mp_core_NativeBridge_setRepeat(
     _env: JNIEnv<'_>,
     _class: JClass<'_>,
     mode: jint,
@@ -541,7 +663,7 @@ pub extern "system" fn Java_com_berkchy_himemp_core_NativeBridge_setRepeat(
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_berkchy_himemp_core_NativeBridge_setShuffle(
+pub extern "system" fn Java_hime_mp_core_NativeBridge_setShuffle(
     _env: JNIEnv<'_>,
     _class: JClass<'_>,
     enabled: jboolean,
@@ -550,7 +672,7 @@ pub extern "system" fn Java_com_berkchy_himemp_core_NativeBridge_setShuffle(
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_berkchy_himemp_core_NativeBridge_setSpeed(
+pub extern "system" fn Java_hime_mp_core_NativeBridge_setSpeed(
     _env: JNIEnv<'_>,
     _class: JClass<'_>,
     speed: jfloat,
@@ -559,7 +681,7 @@ pub extern "system" fn Java_com_berkchy_himemp_core_NativeBridge_setSpeed(
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_berkchy_himemp_core_NativeBridge_setSleepTimer(
+pub extern "system" fn Java_hime_mp_core_NativeBridge_setSleepTimer(
     _env: JNIEnv<'_>,
     _class: JClass<'_>,
     duration_ms: jlong,
@@ -568,15 +690,22 @@ pub extern "system" fn Java_com_berkchy_himemp_core_NativeBridge_setSleepTimer(
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_berkchy_himemp_core_NativeBridge_getState(
+pub extern "system" fn Java_hime_mp_core_NativeBridge_getState(
     mut env: JNIEnv<'_>,
     _class: JClass<'_>,
 ) -> jstring {
-    reply(&mut env, |env, app| json(&*app.state.read().unwrap()))
+    reply(&mut env, |env, app| {
+        json(
+            &*app
+                .state
+                .read()
+                .unwrap_or_else(|poisoned| poisoned.into_inner()),
+        )
+    })
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_berkchy_himemp_core_NativeBridge_setSetting(
+pub extern "system" fn Java_hime_mp_core_NativeBridge_setSetting(
     mut env: JNIEnv<'_>,
     _class: JClass<'_>,
     key: JString<'_>,
@@ -585,23 +714,31 @@ pub extern "system" fn Java_com_berkchy_himemp_core_NativeBridge_setSetting(
     reply(&mut env, |env, app| {
         let key = read_string(env, &key)?;
         let value = read_string(env, &value)?;
-        app.settings.lock().unwrap().set(&key, &value)?;
+        app.settings
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .set(&key, &value)?;
         json(&serde_json::json!({ "ok": true }))
     })
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_berkchy_himemp_core_NativeBridge_getSettings(
+pub extern "system" fn Java_hime_mp_core_NativeBridge_getSettings(
     mut env: JNIEnv<'_>,
     _class: JClass<'_>,
 ) -> jstring {
     reply(&mut env, |env, app| {
-        json(&app.settings.lock().unwrap().values)
+        json(
+            &app.settings
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .values,
+        )
     })
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_berkchy_himemp_core_NativeBridge_clearCaches(
+pub extern "system" fn Java_hime_mp_core_NativeBridge_clearCaches(
     mut env: JNIEnv<'_>,
     _class: JClass<'_>,
 ) -> jstring {
@@ -620,12 +757,22 @@ pub extern "system" fn Java_com_berkchy_himemp_core_NativeBridge_clearCaches(
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_berkchy_himemp_core_NativeBridge_libraryStats(
+pub extern "system" fn Java_hime_mp_core_NativeBridge_libraryStats(
     mut env: JNIEnv<'_>,
     _class: JClass<'_>,
 ) -> jstring {
     reply(&mut env, |env, app| {
-        let playlists = app.playlists.lock().unwrap().playlists.len();
-        json(&app.library.lock().unwrap().stats(playlists))
+        let playlists = app
+            .playlists
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .playlists
+            .len();
+        json(
+            &app.library
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .stats(playlists),
+        )
     })
 }
