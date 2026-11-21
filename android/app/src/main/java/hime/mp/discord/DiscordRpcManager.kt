@@ -69,7 +69,7 @@ object DiscordRpcManager {
         if (::store.isInitialized) return
         store = DiscordTokenStore(context)
         if (!RPC_APPROVED) {
-            _status.value = "Onay bekliyor"
+            _status.value = "Approval pending"
             return
         }
         sessionId = store.sessionId
@@ -98,7 +98,7 @@ object DiscordRpcManager {
 
     fun authorize(context: Context) {
         if (!RPC_APPROVED) {
-            _status.value = "Onay bekliyor"
+            _status.value = "Approval pending"
             return
         }
         if (!::store.isInitialized || callbackJob?.isActive == true) return

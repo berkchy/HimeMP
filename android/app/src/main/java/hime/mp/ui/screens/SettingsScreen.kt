@@ -202,7 +202,7 @@ fun SettingsScreen(viewModel: SettingsViewModel) {
             SettingsCard {
                 if (!DiscordRpcManager.RPC_APPROVED) {
                     Text(
-                        "Discord RPC onayı bekliyor. Onay gelince Connect ve özelleştirme seçenekleri açılacak.",
+                        "Discord RPC approval pending. Connect and customization options will appear once approved.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
