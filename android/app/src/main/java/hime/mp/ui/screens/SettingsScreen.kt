@@ -252,7 +252,7 @@ fun SettingsScreen(viewModel: SettingsViewModel) {
                     onChange = { updateDiscordSetting("discordState", it) },
                 )
                 Text(
-                    "Placeholders: {title} {artist} {album} {info} {status} {position} {duration} {remaining}",
+                    "Formats: <hime.player.song.name> <hime.player.song.artist> <hime.player.song.album> <hime.player.song.info> <hime.player.status> <hime.player.song.duration> <hime.player.song.remaining>",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

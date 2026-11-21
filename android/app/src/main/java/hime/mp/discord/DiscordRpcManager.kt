@@ -29,8 +29,8 @@ object DiscordRpcManager {
     private const val GATEWAY_URL = "wss://gateway.discord.gg/?v=10&encoding=json"
     private const val ASSET_KEY = "himemp_icon"
     const val DEFAULT_NAME = "HimeMP"
-    const val DEFAULT_DETAILS = "{title}"
-    const val DEFAULT_STATE = "{status} • {info}"
+    const val DEFAULT_DETAILS = "<hime.player.song.name>"
+    const val DEFAULT_STATE = "<hime.player.status> • <hime.player.song.info>"
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val http = OkHttpClient.Builder()
@@ -248,16 +248,30 @@ object DiscordRpcManager {
             track?.album?.takeIf { it.isNotBlank() },
         ).joinToString(" • ")
         val status = if (state.playing) "" else "Paused"
-        val remaining = (state.durationMs - state.positionMs).coerceAtLeast(0)
+        val title = track?.title?.takeIf { it.isNotBlank() } ?: "Unknown track"
+        val artist = track?.artist.orEmpty()
+        val album = track?.album.orEmpty()
+        val position = formatDuration(state.positionMs.coerceAtLeast(0))
+        val duration = formatDuration(state.durationMs.coerceAtLeast(0))
+        val remainingText = formatDuration((state.durationMs - state.positionMs).coerceAtLeast(0))
         return template
-            .replace("{title}", track?.title?.takeIf { it.isNotBlank() } ?: "Unknown track")
-            .replace("{artist}", track?.artist.orEmpty())
-            .replace("{album}", track?.album.orEmpty())
+            .replace("<hime.player.song.name>", title)
+            .replace("<hime.player.song.title>", title)
+            .replace("{title}", title)
+            .replace("<hime.player.song.artist>", artist)
+            .replace("{artist}", artist)
+            .replace("<hime.player.song.album>", album)
+            .replace("{album}", album)
+            .replace("<hime.player.song.info>", info)
             .replace("{info}", info)
+            .replace("<hime.player.status>", status)
             .replace("{status}", status)
-            .replace("{position}", formatDuration(state.positionMs.coerceAtLeast(0)))
-            .replace("{duration}", formatDuration(state.durationMs.coerceAtLeast(0)))
-            .replace("{remaining}", formatDuration(remaining))
+            .replace("<hime.player.song.position>", position)
+            .replace("{position}", position)
+            .replace("<hime.player.song.duration>", duration)
+            .replace("{duration}", duration)
+            .replace("<hime.player.song.remaining>", remainingText)
+            .replace("{remaining}", remainingText)
             .trim()
             .trim('•')
             .trim()
