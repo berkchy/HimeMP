@@ -76,7 +76,10 @@ class PlaybackService : Service() {
             combine(
                 PlaybackController.state,
                 PlaybackController.currentTrack,
-            ) { state, _ -> state }.collectLatest { render(it) }
+            ) { state, track -> state to track }.collectLatest { (state, track) ->
+                render(state)
+                DiscordRpcManager.updatePresence(state, track)
+            }
         }
     }
 

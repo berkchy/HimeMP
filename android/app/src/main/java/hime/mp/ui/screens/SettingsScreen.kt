@@ -27,6 +27,7 @@ import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -42,6 +43,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import hime.mp.discord.DiscordRpcManager
 import hime.mp.ui.components.CardShape
 import hime.mp.ui.components.SectionHeader
 import hime.mp.ui.viewmodel.SettingsViewModel
@@ -170,6 +172,43 @@ fun SettingsScreen(viewModel: SettingsViewModel) {
                     label = "Audio focus handling",
                     checked = settings["audioFocus"]?.toBoolean() ?: true,
                     onChange = { viewModel.setSetting("audioFocus", it.toString()) },
+                )
+            }
+        }
+        item {
+            Section("Discord Rich Presence")
+            SettingsCard {
+                val rpcStatus by DiscordRpcManager.status.collectAsState()
+                SettingSwitch(
+                    label = "Enable Rich Presence",
+                    checked = settings["discordRpc"]?.toBoolean() ?: false,
+                    onChange = {
+                        viewModel.setSetting("discordRpc", it.toString())
+                        DiscordRpcManager.setEnabled(it)
+                    },
+                )
+                Spacer(Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = androidx.compose.foundation.layout.Arrangement.SpaceEvenly,
+                ) {
+                    Button(onClick = { DiscordRpcManager.authorize(context) }) {
+                        Text(if (rpcStatus == "Connected") "Reconnect" else "Connect")
+                    }
+                    OutlinedButton(onClick = { DiscordRpcManager.logout() }) {
+                        Text("Logout")
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "Status: $rpcStatus",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    "Upload an art asset named himemp_icon in the Discord portal to show the app logo.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         }
