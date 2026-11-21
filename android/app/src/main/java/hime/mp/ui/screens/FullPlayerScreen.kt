@@ -34,7 +34,6 @@ import androidx.compose.material.icons.filled.RepeatOne
 import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
@@ -62,7 +61,6 @@ import hime.mp.core.Track
 import hime.mp.data.MusicRepository
 import hime.mp.data.PlaybackController
 import hime.mp.ui.components.AlbumArt
-import hime.mp.ui.components.PillButton
 import hime.mp.ui.theme.LocalHimeMotion
 import hime.mp.util.formatDuration
 import kotlinx.coroutines.delay
@@ -73,7 +71,6 @@ import kotlin.math.abs
 fun FullPlayerScreen(
     onClose: () -> Unit,
     onToggleFavorite: (Track) -> Unit,
-    onAddToPlaylist: (Track) -> Unit,
 ) {
     val state by PlaybackController.state.collectAsState()
     val track by PlaybackController.currentTrack.collectAsState()
@@ -81,8 +78,6 @@ fun FullPlayerScreen(
     var scrubbing by remember { mutableStateOf(false) }
     var scrub by remember { mutableStateOf(0f) }
     var showQueue by remember { mutableStateOf(false) }
-    var showSleep by remember { mutableStateOf(false) }
-    var showSpeed by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) { PlaybackController.refreshState() }
     LaunchedEffect(state.positionMs, state.durationMs, scrubbing) {
@@ -203,9 +198,11 @@ fun FullPlayerScreen(
             Text(formatDuration(state.durationMs), style = MaterialTheme.typography.bodyMedium)
         }
 
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.weight(1f))
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 16.dp),
             horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -251,65 +248,12 @@ fun FullPlayerScreen(
                 )
             }
         }
-
-        Spacer(Modifier.height(4.dp))
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceEvenly,
-        ) {
-            PillButton(text = "Sleep") { showSleep = true }
-            PillButton(text = "${state.speed}x") { showSpeed = true }
-            PillButton(text = "Playlist") { track?.let(onAddToPlaylist) }
-            PillButton(text = "Clear queue") { PlaybackController.queueClear() }
-        }
     }
 
     if (showQueue) {
         ModalBottomSheet(onDismissRequest = { showQueue = false }) {
             QueueSheet(state = state)
         }
-    }
-    if (showSleep) {
-        AlertDialog(
-            onDismissRequest = { showSleep = false },
-            title = { Text("Sleep timer") },
-            text = {
-                Column {
-                    listOf(15L, 30L, 45L, 60L).forEach { minutes ->
-                        TextButton(onClick = {
-                            PlaybackController.setSleepTimer(minutes * 60_000L)
-                            showSleep = false
-                        }) { Text("$minutes minutes") }
-                    }
-                    TextButton(onClick = {
-                        PlaybackController.setSleepTimer(-2L)
-                        showSleep = false
-                    }) { Text("End of track") }
-                    TextButton(onClick = {
-                        PlaybackController.setSleepTimer(0L)
-                        showSleep = false
-                    }) { Text("Cancel timer") }
-                }
-            },
-            confirmButton = {},
-        )
-    }
-    if (showSpeed) {
-        AlertDialog(
-            onDismissRequest = { showSpeed = false },
-            title = { Text("Playback speed") },
-            text = {
-                Column {
-                    listOf(0.75f, 1f, 1.25f, 1.5f, 2f).forEach { speed ->
-                        TextButton(onClick = {
-                            PlaybackController.setSpeed(speed)
-                            showSpeed = false
-                        }) { Text("${speed}x") }
-                    }
-                }
-            },
-            confirmButton = {},
-        )
     }
 }
 

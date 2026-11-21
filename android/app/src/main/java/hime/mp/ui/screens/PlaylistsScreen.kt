@@ -1,27 +1,36 @@
 package hime.mp.ui.screens
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.ArrowDownward
-import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.DragIndicator
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.MusicNote
+import androidx.compose.material.icons.filled.NewReleases
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -33,7 +42,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
+import kotlin.math.abs
 import hime.mp.core.Track
 import hime.mp.data.MusicRepository
 import hime.mp.ui.components.CardShape
@@ -83,7 +95,17 @@ fun PlaylistsScreen(
                         .padding(horizontal = 12.dp, vertical = 4.dp)
                         .clickable { onSelect("__favorites__") },
                 ) {
-                    Text("Liked songs (${favorites.size})", modifier = Modifier.padding(16.dp))
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        PlaylistIcon(Icons.Default.Favorite)
+                        Text(
+                            "Liked songs (${favorites.size})",
+                            style = MaterialTheme.typography.titleMedium,
+                            modifier = Modifier.padding(start = 12.dp),
+                        )
+                    }
                 }
                 Card(
                     shape = CardShape,
@@ -93,7 +115,17 @@ fun PlaylistsScreen(
                         .padding(horizontal = 12.dp, vertical = 4.dp)
                         .clickable { onSelect("__recent__") },
                 ) {
-                    Text("Recently played (${recent.size})", modifier = Modifier.padding(16.dp))
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        PlaylistIcon(Icons.Default.History)
+                        Text(
+                            "Recently played (${recent.size})",
+                            style = MaterialTheme.typography.titleMedium,
+                            modifier = Modifier.padding(start = 12.dp),
+                        )
+                    }
                 }
                 Card(
                     shape = CardShape,
@@ -103,7 +135,17 @@ fun PlaylistsScreen(
                         .padding(horizontal = 12.dp, vertical = 4.dp)
                         .clickable { onSelect("__recent_added__") },
                 ) {
-                    Text("Recently added", modifier = Modifier.padding(16.dp))
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        PlaylistIcon(Icons.Default.NewReleases)
+                        Text(
+                            "Recently added",
+                            style = MaterialTheme.typography.titleMedium,
+                            modifier = Modifier.padding(start = 12.dp),
+                        )
+                    }
                 }
             }
             items(playlists, key = { it.id }) { playlist ->
@@ -121,7 +163,8 @@ fun PlaylistsScreen(
                             .padding(horizontal = 12.dp, vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Column(Modifier.weight(1f)) {
+                        PlaylistIcon(Icons.Default.MusicNote)
+                        Column(Modifier.weight(1f).padding(start = 12.dp)) {
                             Text(playlist.name, style = MaterialTheme.typography.titleMedium)
                             Text(
                                 "${playlist.trackIds.size} tracks",
@@ -196,11 +239,17 @@ private fun PlaylistDetailScreen(
                 style = MaterialTheme.typography.titleLarge,
             )
         }
-        Button(onClick = { if (tracks.isNotEmpty()) onPlayTracks(tracks, 0) }, modifier = Modifier.padding(horizontal = 16.dp)) {
-            Text("Play all")
+        Button(
+            onClick = { if (tracks.isNotEmpty()) onPlayTracks(tracks, 0) },
+            modifier = Modifier.padding(horizontal = 16.dp),
+            shape = CardShape,
+        ) {
+            Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
+            Text("Play all", modifier = Modifier.padding(start = 8.dp))
         }
         LazyColumn(modifier = Modifier.weight(1f), state = listState) {
             itemsIndexed(tracks, key = { _, t -> t.id }) { index, track ->
+                var dragAccumulated by remember { mutableStateOf(0f) }
                 TrackRow(
                     track = track,
                     isPlaying = false,
@@ -208,18 +257,33 @@ private fun PlaylistDetailScreen(
                     onFavorite = {},
                     onQueueNext = { onQueueNext(track) },
                     shape = getGroupedItemShape(index, tracks.size),
+                    modifier = Modifier.pointerInput(index) {
+                        if (id.startsWith("__")) return@pointerInput
+                        detectDragGesturesAfterLongPress(
+                            onDragStart = { dragAccumulated = 0f },
+                            onDrag = { change, amount ->
+                                dragAccumulated += amount.y
+                                if (abs(dragAccumulated) > 56f) {
+                                    val target = (index + if (dragAccumulated > 0) 1 else -1)
+                                        .coerceIn(0, tracks.lastIndex)
+                                    if (target != index) {
+                                        viewModel.moveTrack(id, index, target)
+                                        change.consume()
+                                    }
+                                    dragAccumulated = 0f
+                                }
+                            },
+                            onDragEnd = {},
+                            onDragCancel = {},
+                        )
+                    },
                     trailing = {
                         if (!id.startsWith("__")) {
-                            IconButton(
-                                onClick = { viewModel.moveTrack(id, index, (index - 1).coerceAtLeast(0)) },
-                                enabled = index > 0,
-                            ) { Icon(Icons.Default.ArrowUpward, "Move up") }
-                            IconButton(
-                                onClick = {
-                                    viewModel.moveTrack(id, index, (index + 1).coerceAtMost(tracks.lastIndex))
-                                },
-                                enabled = index < tracks.lastIndex,
-                            ) { Icon(Icons.Default.ArrowDownward, "Move down") }
+                            Icon(
+                                Icons.Default.DragIndicator,
+                                contentDescription = "Drag to reorder",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
                             IconButton(onClick = { viewModel.removeTrack(id, track.id) }) {
                                 Icon(Icons.Default.Delete, "Remove from playlist")
                             }
@@ -227,6 +291,24 @@ private fun PlaylistDetailScreen(
                     },
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun PlaylistIcon(icon: ImageVector) {
+    Surface(
+        shape = CircleShape,
+        color = MaterialTheme.colorScheme.secondaryContainer,
+        modifier = Modifier.size(44.dp),
+    ) {
+        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+            Icon(
+                icon,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                modifier = Modifier.size(22.dp),
+            )
         }
     }
 }

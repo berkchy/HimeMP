@@ -3,11 +3,16 @@ package hime.mp.ui
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -16,7 +21,6 @@ import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -26,7 +30,6 @@ import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -45,7 +48,6 @@ import kotlinx.coroutines.withContext
 import hime.mp.core.Track
 import hime.mp.data.PlaybackController
 import hime.mp.ui.components.MiniPlayer
-import hime.mp.ui.components.TextInputDialog
 import hime.mp.ui.screens.FullPlayerScreen
 import hime.mp.ui.screens.LibraryScreen
 import hime.mp.ui.screens.PlaylistsScreen
@@ -69,11 +71,8 @@ fun MainScreen() {
     var destination by remember { mutableStateOf("library") }
     var fullPlayer by remember { mutableStateOf(false) }
     var selectedPlaylist by remember { mutableStateOf<String?>(null) }
-    var addTarget by remember { mutableStateOf<Track?>(null) }
-    var creatingForTrack by remember { mutableStateOf(false) }
 
     val settingsMap by settings.settings.collectAsState()
-    val playlistState by playlists.playlists.collectAsState()
     val playerState by PlaybackController.state.collectAsState()
     val currentTrack by PlaybackController.currentTrack.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -167,24 +166,35 @@ fun MainScreen() {
                     .padding(padding)
                     .fillMaxSize(),
             ) {
-                when (destination) {
-                    "library" -> LibraryScreen(
-                        viewModel = library,
-                        onPlayTracks = { tracks, index -> play(tracks, index) },
-                        onQueueNext = { track -> queueNext(track, playerState.index) },
-                    )
-                    "search" -> SearchScreen(
-                        onPlayTracks = { tracks, index -> play(tracks, index) },
-                        onQueueNext = { track -> queueNext(track, playerState.index) },
-                    )
-                    "playlists" -> PlaylistsScreen(
-                        viewModel = playlists,
-                        selectedId = selectedPlaylist,
-                        onSelect = { selectedPlaylist = it },
-                        onPlayTracks = { tracks, index -> play(tracks, index) },
-                        onQueueNext = { track -> queueNext(track, playerState.index) },
-                    )
-                    "settings" -> SettingsScreen(viewModel = settings)
+                AnimatedContent(
+                    targetState = destination,
+                    transitionSpec = {
+                        (slideInHorizontally { fullWidth -> fullWidth / 4 } +
+                            fadeIn(animationSpec = tween(180))) togetherWith
+                            (slideOutHorizontally { fullWidth -> -fullWidth / 4 } +
+                                fadeOut(animationSpec = tween(180)))
+                    },
+                    label = "destination",
+                ) { dest ->
+                    when (dest) {
+                        "library" -> LibraryScreen(
+                            viewModel = library,
+                            onPlayTracks = { tracks, index -> play(tracks, index) },
+                            onQueueNext = { track -> queueNext(track, playerState.index) },
+                        )
+                        "search" -> SearchScreen(
+                            onPlayTracks = { tracks, index -> play(tracks, index) },
+                            onQueueNext = { track -> queueNext(track, playerState.index) },
+                        )
+                        "playlists" -> PlaylistsScreen(
+                            viewModel = playlists,
+                            selectedId = selectedPlaylist,
+                            onSelect = { selectedPlaylist = it },
+                            onPlayTracks = { tracks, index -> play(tracks, index) },
+                            onQueueNext = { track -> queueNext(track, playerState.index) },
+                        )
+                        "settings" -> SettingsScreen(viewModel = settings)
+                    }
                 }
 
                 AnimatedVisibility(
@@ -202,48 +212,9 @@ fun MainScreen() {
                                 PlaybackController.refreshState()
                             }
                         },
-                        onAddToPlaylist = { addTarget = it },
                     )
                 }
             }
-        }
-
-        addTarget?.let { target ->
-            AlertDialog(
-                onDismissRequest = { addTarget = null },
-                title = { Text("Add to playlist") },
-                text = {
-                    Column {
-                        playlistState.forEach { playlist ->
-                            TextButton(onClick = {
-                                playlists.addTracks(playlist.id, listOf(target.id))
-                                addTarget = null
-                            }) { Text(playlist.name) }
-                        }
-                        TextButton(onClick = { creatingForTrack = true }) { Text("New playlist") }
-                    }
-                },
-                confirmButton = {},
-            )
-        }
-        if (creatingForTrack) {
-            TextInputDialog(
-                title = "New playlist",
-                onDismiss = { creatingForTrack = false },
-                onConfirm = { name ->
-                    kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main).launch {
-                        val created = runCatching {
-                            hime.mp.data.MusicRepository.createPlaylist(name)
-                        }.getOrNull()
-                        addTarget?.let { target ->
-                            created?.id?.let { id -> playlists.addTracks(id, listOf(target.id)) }
-                        }
-                        playlists.refresh()
-                        addTarget = null
-                        creatingForTrack = false
-                    }
-                },
-            )
         }
     }
 }
