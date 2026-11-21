@@ -113,8 +113,7 @@ jobs:
         run: |
           mkdir -p release
           find apks -type f -name '*.apk' -print0 | while IFS= read -r -d '' file; do
-            variant=$(basename "$(dirname "$file")")
-            cp "$file" "release/HimeMP-${GITHUB_REF_NAME}-${variant}.apk"
+            cp "$file" "release/HimeMP-${GITHUB_REF_NAME}-release.apk"
           done
           ls -lh release
       - name: Publish versioned release (tag push)
