@@ -11,21 +11,39 @@ val SuccessGreenDim = Color(0xFF173D24)
 val Black = Color(0xFF0C0E13)
 val White = Color(0xFFF7F9FC)
 
-@Composable val Accent: Color get() = MaterialTheme.colorScheme.primary
-@Composable val AccentDim: Color get() = MaterialTheme.colorScheme.primaryContainer
-@Composable val AccentSurface: Color get() = MaterialTheme.colorScheme.primaryContainer
-@Composable val Secondary: Color get() = MaterialTheme.colorScheme.secondary
-@Composable val SecondaryDim: Color get() = MaterialTheme.colorScheme.secondaryContainer
-@Composable val SecondarySurface: Color get() = MaterialTheme.colorScheme.secondaryContainer
-@Composable val Tertiary: Color get() = MaterialTheme.colorScheme.tertiary
-@Composable val TertiaryDim: Color get() = MaterialTheme.colorScheme.tertiaryContainer
-@Composable val Gray99: Color get() = MaterialTheme.colorScheme.surfaceContainerLowest
-@Composable val Gray95: Color get() = MaterialTheme.colorScheme.surfaceContainerLow
-@Composable val Gray90: Color get() = MaterialTheme.colorScheme.surfaceContainer
-@Composable val Gray85: Color get() = MaterialTheme.colorScheme.surfaceContainerHigh
-@Composable val Gray80: Color get() = MaterialTheme.colorScheme.surfaceContainerHighest
-@Composable val Gray70: Color get() = MaterialTheme.colorScheme.outlineVariant
-@Composable val Gray60: Color get() = MaterialTheme.colorScheme.outline
-@Composable val Gray50: Color get() = MaterialTheme.colorScheme.outline
-@Composable val Gray40: Color get() = MaterialTheme.colorScheme.onSurfaceVariant
-@Composable val Gray30: Color get() = MaterialTheme.colorScheme.onSurface
+val Accent: Color
+    @Composable get() = MaterialTheme.colorScheme.primary
+val AccentDim: Color
+    @Composable get() = MaterialTheme.colorScheme.primaryContainer
+val AccentSurface: Color
+    @Composable get() = MaterialTheme.colorScheme.primaryContainer
+val Secondary: Color
+    @Composable get() = MaterialTheme.colorScheme.secondary
+val SecondaryDim: Color
+    @Composable get() = MaterialTheme.colorScheme.secondaryContainer
+val SecondarySurface: Color
+    @Composable get() = MaterialTheme.colorScheme.secondaryContainer
+val Tertiary: Color
+    @Composable get() = MaterialTheme.colorScheme.tertiary
+val TertiaryDim: Color
+    @Composable get() = MaterialTheme.colorScheme.tertiaryContainer
+val Gray99: Color
+    @Composable get() = MaterialTheme.colorScheme.surfaceContainerLowest
+val Gray95: Color
+    @Composable get() = MaterialTheme.colorScheme.surfaceContainerLow
+val Gray90: Color
+    @Composable get() = MaterialTheme.colorScheme.surfaceContainer
+val Gray85: Color
+    @Composable get() = MaterialTheme.colorScheme.surfaceContainerHigh
+val Gray80: Color
+    @Composable get() = MaterialTheme.colorScheme.surfaceContainerHighest
+val Gray70: Color
+    @Composable get() = MaterialTheme.colorScheme.outlineVariant
+val Gray60: Color
+    @Composable get() = MaterialTheme.colorScheme.outline
+val Gray50: Color
+    @Composable get() = MaterialTheme.colorScheme.outline
+val Gray40: Color
+    @Composable get() = MaterialTheme.colorScheme.onSurfaceVariant
+val Gray30: Color
+    @Composable get() = MaterialTheme.colorScheme.onSurface

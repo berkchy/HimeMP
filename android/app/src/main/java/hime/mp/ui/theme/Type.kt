@@ -16,19 +16,64 @@ private val GoogleSansFamily = FontFamily(
 )
 
 val HimeTypography = Typography(
-    displayLarge = TextStyle(GoogleSansFamily, FontWeight.Bold, 40.sp, 46.sp, (-0.5).sp),
-    displayMedium = TextStyle(GoogleSansFamily, FontWeight.Bold, 34.sp, 40.sp, (-0.25).sp),
-    displaySmall = TextStyle(GoogleSansFamily, FontWeight.Bold, 28.sp, 34.sp, 0.sp),
-    headlineLarge = TextStyle(GoogleSansFamily, FontWeight.Bold, 26.sp, 32.sp, 0.sp),
-    headlineMedium = TextStyle(GoogleSansFamily, FontWeight.Bold, 22.sp, 28.sp, 0.sp),
-    headlineSmall = TextStyle(GoogleSansFamily, FontWeight.SemiBold, 20.sp, 26.sp, 0.sp),
-    titleLarge = TextStyle(GoogleSansFamily, FontWeight.Bold, 20.sp, 26.sp, 0.sp),
-    titleMedium = TextStyle(GoogleSansFamily, FontWeight.SemiBold, 16.sp, 22.sp, 0.15.sp),
-    titleSmall = TextStyle(GoogleSansFamily, FontWeight.SemiBold, 14.sp, 20.sp, 0.1.sp),
-    bodyLarge = TextStyle(GoogleSansFamily, FontWeight.Normal, 15.sp, 22.sp, 0.25.sp),
-    bodyMedium = TextStyle(GoogleSansFamily, FontWeight.Normal, 14.sp, 20.sp, 0.2.sp),
-    bodySmall = TextStyle(GoogleSansFamily, FontWeight.Normal, 12.sp, 16.sp, 0.2.sp),
-    labelLarge = TextStyle(GoogleSansFamily, FontWeight.SemiBold, 14.sp, 20.sp, 0.1.sp),
-    labelMedium = TextStyle(GoogleSansFamily, FontWeight.SemiBold, 12.sp, 16.sp, 0.2.sp),
-    labelSmall = TextStyle(GoogleSansFamily, FontWeight.Medium, 11.sp, 14.sp, 0.3.sp),
+    displayLarge = TextStyle(
+        fontFamily = GoogleSansFamily, fontWeight = FontWeight.Bold,
+        fontSize = 40.sp, lineHeight = 46.sp, letterSpacing = (-0.5).sp,
+    ),
+    displayMedium = TextStyle(
+        fontFamily = GoogleSansFamily, fontWeight = FontWeight.Bold,
+        fontSize = 34.sp, lineHeight = 40.sp, letterSpacing = (-0.25).sp,
+    ),
+    displaySmall = TextStyle(
+        fontFamily = GoogleSansFamily, fontWeight = FontWeight.Bold,
+        fontSize = 28.sp, lineHeight = 34.sp,
+    ),
+    headlineLarge = TextStyle(
+        fontFamily = GoogleSansFamily, fontWeight = FontWeight.Bold,
+        fontSize = 26.sp, lineHeight = 32.sp,
+    ),
+    headlineMedium = TextStyle(
+        fontFamily = GoogleSansFamily, fontWeight = FontWeight.Bold,
+        fontSize = 22.sp, lineHeight = 28.sp,
+    ),
+    headlineSmall = TextStyle(
+        fontFamily = GoogleSansFamily, fontWeight = FontWeight.SemiBold,
+        fontSize = 20.sp, lineHeight = 26.sp,
+    ),
+    titleLarge = TextStyle(
+        fontFamily = GoogleSansFamily, fontWeight = FontWeight.Bold,
+        fontSize = 20.sp, lineHeight = 26.sp,
+    ),
+    titleMedium = TextStyle(
+        fontFamily = GoogleSansFamily, fontWeight = FontWeight.SemiBold,
+        fontSize = 16.sp, lineHeight = 22.sp, letterSpacing = 0.15.sp,
+    ),
+    titleSmall = TextStyle(
+        fontFamily = GoogleSansFamily, fontWeight = FontWeight.SemiBold,
+        fontSize = 14.sp, lineHeight = 20.sp, letterSpacing = 0.1.sp,
+    ),
+    bodyLarge = TextStyle(
+        fontFamily = GoogleSansFamily, fontWeight = FontWeight.Normal,
+        fontSize = 15.sp, lineHeight = 22.sp, letterSpacing = 0.25.sp,
+    ),
+    bodyMedium = TextStyle(
+        fontFamily = GoogleSansFamily, fontWeight = FontWeight.Normal,
+        fontSize = 14.sp, lineHeight = 20.sp, letterSpacing = 0.2.sp,
+    ),
+    bodySmall = TextStyle(
+        fontFamily = GoogleSansFamily, fontWeight = FontWeight.Normal,
+        fontSize = 12.sp, lineHeight = 16.sp, letterSpacing = 0.2.sp,
+    ),
+    labelLarge = TextStyle(
+        fontFamily = GoogleSansFamily, fontWeight = FontWeight.SemiBold,
+        fontSize = 14.sp, lineHeight = 20.sp, letterSpacing = 0.1.sp,
+    ),
+    labelMedium = TextStyle(
+        fontFamily = GoogleSansFamily, fontWeight = FontWeight.SemiBold,
+        fontSize = 12.sp, lineHeight = 16.sp, letterSpacing = 0.2.sp,
+    ),
+    labelSmall = TextStyle(
+        fontFamily = GoogleSansFamily, fontWeight = FontWeight.Medium,
+        fontSize = 11.sp, lineHeight = 14.sp, letterSpacing = 0.3.sp,
+    ),
 )
