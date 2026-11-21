@@ -1,10 +1,6 @@
 package hime.mp.discord
 
 import android.net.Uri
-import java.io.BufferedReader
-import java.io.InputStreamReader
-import java.net.InetSocketAddress
-import java.net.ServerSocket
 import java.security.MessageDigest
 import java.security.SecureRandom
 import java.util.Base64
@@ -17,10 +13,8 @@ import org.json.JSONObject
 
 object DiscordAuth {
     const val CLIENT_ID = "1573720763972722699"
-    const val REDIRECT_URI = "http://127.0.0.1:9384/callback"
     const val DISCORD_REDIRECT_URI = "discord-$CLIENT_ID:/authorize/callback"
 
-    private const val PORT = 9384
     private const val SCOPES = "identify rpc rpc.activities.write"
     private const val TOKEN_URL = "https://discord.com/api/v10/oauth2/token"
     private const val AUTHORIZE_URL = "https://discord.com/oauth2/authorize"
@@ -38,7 +32,7 @@ object DiscordAuth {
     fun authorizationUrl(
         verifier: String,
         state: String,
-        redirectUri: String = REDIRECT_URI,
+        redirectUri: String = DISCORD_REDIRECT_URI,
     ): String {
         val challenge = challenge(verifier)
         return AUTHORIZE_URL +
@@ -59,50 +53,10 @@ object DiscordAuth {
         return base64Url(bytes)
     }
 
-    class CallbackServer internal constructor(private val server: ServerSocket) {
-        suspend fun await(): Callback = withContext(Dispatchers.IO) {
-            val socket = server.accept()
-            try {
-                val requestLine = BufferedReader(InputStreamReader(socket.getInputStream())).use { it.readLine() }
-                    ?: error("Empty Discord callback")
-                val target = requestLine.split(' ').getOrNull(1).orEmpty()
-                val uri = if (target.startsWith("http")) {
-                    Uri.parse(target)
-                } else {
-                    Uri.parse("http://127.0.0.1$target")
-                }
-                val code = uri.getQueryParameter("code") ?: error("Discord callback has no code")
-                val state = uri.getQueryParameter("state")
-                val html = "<!doctype html><title>HimeMP</title><p>Discord bağlantısı tamamlandı. Sekmeyi kapatabilirsin.</p>"
-                val response = (
-                    "HTTP/1.1 200 OK\r\n" +
-                        "Content-Type: text/html; charset=utf-8\r\n" +
-                        "Content-Length: ${html.toByteArray().size}\r\n" +
-                        "Connection: close\r\n\r\n" +
-                        html
-                    ).toByteArray()
-                socket.getOutputStream().use { it.write(response) }
-                Callback(code, state)
-            } finally {
-                runCatching { socket.close() }
-            }
-        }
-
-        fun close() = runCatching { server.close() }
-    }
-
-    fun startCallbackServer(): CallbackServer {
-        val server = ServerSocket().apply {
-            reuseAddress = true
-            bind(InetSocketAddress("127.0.0.1", PORT))
-        }
-        return CallbackServer(server)
-    }
-
     suspend fun exchange(
         code: String,
         verifier: String,
-        redirectUri: String = REDIRECT_URI,
+        redirectUri: String = DISCORD_REDIRECT_URI,
     ): Tokens = withContext(Dispatchers.IO) {
         postForm(
             mapOf(

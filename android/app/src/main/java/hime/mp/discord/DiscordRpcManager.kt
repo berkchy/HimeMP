@@ -3,6 +3,7 @@ package hime.mp.discord
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import androidx.browser.customtabs.CustomTabsIntent
 import hime.mp.core.PlaybackState
 import hime.mp.core.Track
 import hime.mp.data.MusicRepository
@@ -52,7 +53,6 @@ object DiscordRpcManager {
     private var pendingResume = false
     private var pendingVerifier: String? = null
     private var pendingState: String? = null
-    private var pendingRedirectUri: String? = null
     private var activityName = DEFAULT_NAME
     private var detailsTemplate = DEFAULT_DETAILS
     private var stateTemplate = DEFAULT_STATE
@@ -97,66 +97,40 @@ object DiscordRpcManager {
         val state = DiscordAuth.generateVerifier()
         pendingVerifier = verifier
         pendingState = state
-
-        val discordUrl = DiscordAuth.authorizationUrl(verifier, state, DiscordAuth.DISCORD_REDIRECT_URI)
-        if (openDiscordApp(context, discordUrl)) {
-            pendingRedirectUri = DiscordAuth.DISCORD_REDIRECT_URI
-            _status.value = "Waiting for Discord"
-            return
-        }
-
-        val server = runCatching { DiscordAuth.startCallbackServer() }
-            .onFailure { _status.value = "Port 9384 unavailable" }
-            .getOrNull() ?: return
-        pendingRedirectUri = DiscordAuth.REDIRECT_URI
         _status.value = "Waiting for Discord"
-        callbackJob = scope.launch {
-            try {
-                val callback = server.await()
-                completeAuthorization(callback, verifier, DiscordAuth.REDIRECT_URI)
-            } catch (error: Exception) {
-                _status.value = error.message?.take(80) ?: "Connect failed"
-            } finally {
-                server.close()
-            }
-        }
-        val intent = Intent(
-            Intent.ACTION_VIEW,
-            Uri.parse(DiscordAuth.authorizationUrl(verifier, state, DiscordAuth.REDIRECT_URI)),
-        ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        runCatching { context.startActivity(intent) }
+
+        val url = DiscordAuth.authorizationUrl(verifier, state, DiscordAuth.DISCORD_REDIRECT_URI)
+        val customTabs = CustomTabsIntent.Builder().build()
+        customTabs.intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        runCatching { customTabs.launchUrl(context, Uri.parse(url)) }
             .onFailure {
-                callbackJob?.cancel()
-                server.close()
+                pendingVerifier = null
+                pendingState = null
                 _status.value = "No browser available"
             }
-    }
-
-    private fun openDiscordApp(context: Context, url: String): Boolean {
-        val discordUri = Uri.parse(url).buildUpon().scheme("discord").build()
-        val candidates = listOf(
-            Intent(Intent.ACTION_VIEW, discordUri),
-            Intent(Intent.ACTION_VIEW, Uri.parse(url)),
-        ).map { it.setPackage("com.discord") }
-        val intent = candidates.firstOrNull {
-            runCatching { it.resolveActivity(context.packageManager) != null }.getOrDefault(false)
-        } ?: return false
-        return runCatching {
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            context.startActivity(intent)
-        }.isSuccess
     }
 
     fun handleOAuthIntent(intent: Intent) {
         val uri = intent.data ?: return
         if (uri.scheme != "discord-${DiscordAuth.CLIENT_ID}") return
+        val verifier = pendingVerifier ?: return
+        val error = uri.getQueryParameter("error")
+        if (error != null) {
+            pendingVerifier = null
+            pendingState = null
+            _status.value = if (error == "access_denied") "Discord cancelled" else "Discord error: $error"
+            return
+        }
         val code = uri.getQueryParameter("code") ?: return
         val state = uri.getQueryParameter("state")
-        val verifier = pendingVerifier ?: return
         if (pendingState != null && state != pendingState) {
+            pendingVerifier = null
+            pendingState = null
             _status.value = "Discord state mismatch"
             return
         }
+        pendingVerifier = null
+        pendingState = null
         callbackJob?.cancel()
         callbackJob = scope.launch {
             try {
@@ -188,7 +162,6 @@ object DiscordRpcManager {
         } finally {
             pendingVerifier = null
             pendingState = null
-            pendingRedirectUri = null
         }
     }
 
