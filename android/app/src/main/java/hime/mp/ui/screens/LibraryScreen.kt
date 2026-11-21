@@ -120,7 +120,7 @@ fun LibraryScreen(
                     singleLine = true,
                     modifier = Modifier
                         .weight(1f)
-                        .height(48.dp),
+                        .height(39.dp),
                 )
                 if (!selectionMode) {
                     Spacer(Modifier.width(8.dp))
