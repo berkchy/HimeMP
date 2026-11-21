@@ -9,24 +9,21 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.graphics.Bitmap
-import android.graphics.Canvas
 import android.media.AudioAttributes
 import android.media.AudioFocusRequest
 import android.media.AudioManager
-import android.media.MediaMetadata
-import android.media.session.MediaSession
 import android.os.Build
 import android.os.IBinder
+import android.support.v4.media.MediaMetadataCompat
+import android.support.v4.media.session.MediaSessionCompat
+import android.support.v4.media.session.PlaybackStateCompat
 import android.util.TypedValue
-import android.widget.RemoteViews
-import androidx.core.content.ContextCompat
+import androidx.core.app.NotificationCompat
 import hime.mp.MainActivity
 import hime.mp.R
 import hime.mp.core.PlaybackState
-import hime.mp.core.Track
 import hime.mp.data.PlaybackController
 import hime.mp.util.ArtCache
-import hime.mp.util.formatDuration
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -48,7 +45,7 @@ class PlaybackService : Service() {
     }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
-    private lateinit var session: MediaSession
+    private lateinit var session: MediaSessionCompat
     private var focusRequest: AudioFocusRequest? = null
     private val deviceReceiver = DeviceEventReceiver()
     private var receiverRegistered = false
@@ -56,9 +53,11 @@ class PlaybackService : Service() {
     override fun onCreate() {
         super.onCreate()
         createChannel()
-        session = MediaSession(this, "HimeMP").apply {
+        session = MediaSessionCompat(this, "HimeMP").apply {
             setCallback(SessionCallback())
-            setFlags(MediaSession.FLAG_HANDLES_MEDIA_BUTTONS or MediaSession.FLAG_HANDLES_TRANSPORT_CONTROLS)
+            setFlags(MediaSessionCompat.FLAG_HANDLES_MEDIA_BUTTONS or
+                MediaSessionCompat.FLAG_HANDLES_TRANSPORT_CONTROLS)
+            setSessionActivity(openAppIntent())
             isActive = true
         }
         runCatching {
@@ -96,7 +95,7 @@ class PlaybackService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
-    private inner class SessionCallback : MediaSession.Callback() {
+    private inner class SessionCallback : MediaSessionCompat.Callback() {
         override fun onPlay() {
             requestFocus()
             PlaybackController.play()
@@ -112,6 +111,22 @@ class PlaybackService : Service() {
 
         override fun onSeekTo(pos: Long) = PlaybackController.seek(pos)
     }
+
+    private fun openAppIntent(): PendingIntent = PendingIntent.getActivity(
+        this,
+        0,
+        Intent(this, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        },
+        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+    )
+
+    private fun serviceIntent(action: String): PendingIntent = PendingIntent.getService(
+        this,
+        action.hashCode(),
+        Intent(this, PlaybackService::class.java).setAction(action),
+        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+    )
 
     private fun requestFocus() {
         if (PlaybackController.settings.value["audioFocus"]?.toBoolean() == false) return
@@ -162,31 +177,37 @@ class PlaybackService : Service() {
 
     private suspend fun render(state: PlaybackState) {
         val track = PlaybackController.currentTrack.value
-        session.setMetadata(
-            MediaMetadata.Builder()
-                .putString(MediaMetadata.METADATA_KEY_TITLE, track?.title ?: getString(R.string.app_name))
-                .putString(MediaMetadata.METADATA_KEY_ARTIST, track?.artist.orEmpty())
-                .putString(MediaMetadata.METADATA_KEY_ALBUM, track?.album.orEmpty())
-                .putLong(MediaMetadata.METADATA_KEY_DURATION, state.durationMs)
+        val art = withContext(Dispatchers.IO) { track?.let { ArtCache.loadBlocking(it) } }
+        val metadata = MediaMetadataCompat.Builder()
+            .putString(
+                MediaMetadataCompat.METADATA_KEY_TITLE,
+                track?.title ?: getString(R.string.now_playing),
+            )
+            .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, track?.artist.orEmpty())
+            .putString(MediaMetadataCompat.METADATA_KEY_ALBUM, track?.album.orEmpty())
+            .putLong(MediaMetadataCompat.METADATA_KEY_DURATION, state.durationMs)
+        if (art != null) {
+            metadata.putBitmap(MediaMetadataCompat.METADATA_KEY_ART, art)
+            metadata.putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, art)
+        }
+        session.setMetadata(metadata.build())
+        session.setPlaybackState(
+            PlaybackStateCompat.Builder()
+                .setState(
+                    if (state.playing) PlaybackStateCompat.STATE_PLAYING
+                    else PlaybackStateCompat.STATE_PAUSED,
+                    state.positionMs.coerceAtLeast(0),
+                    state.speed,
+                )
+                .setActions(
+                    PlaybackStateCompat.ACTION_PLAY or
+                        PlaybackStateCompat.ACTION_PAUSE or
+                        PlaybackStateCompat.ACTION_SKIP_TO_NEXT or
+                        PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS or
+                        PlaybackStateCompat.ACTION_SEEK_TO
+                )
                 .build()
         )
-        val playbackState = android.media.session.PlaybackState.Builder()
-            .setState(
-                if (state.playing) android.media.session.PlaybackState.STATE_PLAYING
-                else android.media.session.PlaybackState.STATE_PAUSED,
-                state.positionMs.coerceAtLeast(0),
-                state.speed,
-            )
-            .setActions(
-                android.media.session.PlaybackState.ACTION_PLAY or
-                    android.media.session.PlaybackState.ACTION_PAUSE or
-                    android.media.session.PlaybackState.ACTION_SKIP_TO_NEXT or
-                    android.media.session.PlaybackState.ACTION_SKIP_TO_PREVIOUS or
-                    android.media.session.PlaybackState.ACTION_SEEK_TO
-            )
-            .build()
-        session.setPlaybackState(playbackState)
-        val art = withContext(Dispatchers.IO) { track?.let { ArtCache.loadBlocking(it) } }
         if (state.playing || state.queue.isNotEmpty()) {
             startForeground(NOTIFICATION_ID, buildNotification(state, art))
         } else {
@@ -194,83 +215,52 @@ class PlaybackService : Service() {
         }
     }
 
-    private fun bitmapFrom(resId: Int, sizeDp: Int = 24): Bitmap {
-        val drawable = ContextCompat.getDrawable(this, resId)
-            ?: return Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888)
-        val size = (sizeDp * resources.displayMetrics.density).toInt().coerceAtLeast(1)
-        val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(bitmap)
-        drawable.setBounds(0, 0, size, size)
-        drawable.draw(canvas)
-        return bitmap
-    }
-
     private fun buildNotification(state: PlaybackState, art: Bitmap?): Notification {
-        val track: Track? = PlaybackController.currentTrack.value
-        val title = track?.title ?: getString(R.string.now_playing)
-        val artist = track?.artist.orEmpty()
-        val cover = art ?: bitmapFrom(R.drawable.ic_placeholder_album, 48)
-        val playIcon = bitmapFrom(
-            if (state.playing) R.drawable.ic_notif_pause else R.drawable.ic_notif_play,
-            24,
-        )
-        val openIntent = PendingIntent.getActivity(
-            this,
-            0,
-            Intent(this, MainActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
-            },
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-        )
-        fun serviceIntent(action: String) = PendingIntent.getService(
-            this,
-            action.hashCode(),
-            Intent(this, PlaybackService::class.java).setAction(action),
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-        )
-        fun RemoteViews.bindControls() {
-            setImageViewBitmap(R.id.notif_art, cover)
-            setTextViewText(R.id.notif_title, title)
-            setTextViewText(R.id.notif_artist, artist)
-            setImageViewBitmap(R.id.notif_play, playIcon)
-            setOnClickPendingIntent(R.id.notif_root, openIntent)
-            setOnClickPendingIntent(R.id.notif_prev, serviceIntent(ACTION_PREVIOUS))
-            setOnClickPendingIntent(R.id.notif_play, serviceIntent(ACTION_TOGGLE))
-            setOnClickPendingIntent(R.id.notif_next, serviceIntent(ACTION_NEXT))
-        }
+        val track = PlaybackController.currentTrack.value
+        fun action(icon: Int, title: String, action: String): NotificationCompat.Action =
+            NotificationCompat.Action.Builder(icon, title, serviceIntent(action)).build()
 
-        val compact = RemoteViews(packageName, R.layout.notification_player_compact).apply {
-            bindControls()
-        }
-        val expanded = RemoteViews(packageName, R.layout.notification_player).apply {
-            bindControls()
-            val max = 1000
-            val progress = if (state.durationMs > 0) {
-                (state.positionMs.toFloat() / state.durationMs * max).toInt().coerceIn(0, max)
-            } else {
-                0
-            }
-            setProgressBar(R.id.notif_progress, max, progress, false)
-            setTextViewText(R.id.notif_position, formatDuration(state.positionMs))
-            setTextViewText(R.id.notif_duration, formatDuration(state.durationMs))
-            setOnClickPendingIntent(R.id.notif_close, serviceIntent(ACTION_STOP))
-        }
-
-        return Notification.Builder(this, CHANNEL_ID)
-            .setContentTitle(title)
-            .setContentText(artist)
+        val builder = NotificationCompat.Builder(this, CHANNEL_ID)
+            .setContentTitle(track?.title ?: getString(R.string.now_playing))
+            .setContentText(track?.artist.orEmpty())
             .setSubText(track?.album)
             .setSmallIcon(R.drawable.ic_stat_music)
-            .setContentIntent(openIntent)
+            .setLargeIcon(art)
+            .setContentIntent(openAppIntent())
             .setDeleteIntent(serviceIntent(ACTION_STOP))
             .setOngoing(state.playing)
             .setOnlyAlertOnce(true)
             .setVisibility(Notification.VISIBILITY_PUBLIC)
+            .setProgress(
+                state.durationMs.toInt().coerceAtLeast(1),
+                state.positionMs.coerceIn(0, state.durationMs).toInt(),
+                false,
+            )
             .setColor(resolveAccent())
-            .setCustomContentView(compact)
-            .setCustomBigContentView(expanded)
-            .setCustomHeadsUpContentView(compact)
-            .build()
+            .setColorized(true)
+            .addAction(
+                action(
+                    android.R.drawable.ic_media_previous,
+                    "Previous",
+                    ACTION_PREVIOUS,
+                ),
+            )
+            .addAction(
+                action(
+                    if (state.playing) android.R.drawable.ic_media_pause
+                    else android.R.drawable.ic_media_play,
+                    if (state.playing) "Pause" else "Play",
+                    ACTION_TOGGLE,
+                ),
+            )
+            .addAction(action(android.R.drawable.ic_media_next, "Next", ACTION_NEXT))
+            .setStyle(
+                androidx.media.app.NotificationCompat.MediaStyle()
+                    .setMediaSession(session.sessionToken)
+                    .setShowActionsInCompactView(0, 1, 2),
+            )
+
+        return builder.build()
     }
 
     private fun resolveAccent(): Int {
