@@ -3,9 +3,12 @@ package hime.mp.ui.screens
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -38,7 +41,6 @@ import hime.mp.data.MusicRepository
 import hime.mp.data.PlaybackController
 import hime.mp.ui.components.ConfirmDialog
 import hime.mp.ui.components.PillButton
-import hime.mp.ui.components.SectionHeader
 import hime.mp.ui.components.TextInputDialog
 import hime.mp.ui.components.TrackRow
 import hime.mp.ui.components.getGroupedItemShape
@@ -97,23 +99,42 @@ fun LibraryScreen(
 
     Column(modifier = Modifier.fillMaxSize()) {
         Surface(tonalElevation = 3.dp) {
-            OutlinedTextField(
-                value = query,
-                onValueChange = { query = it },
-                placeholder = { Text("Search library") },
-                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                trailingIcon = {
-                    if (query.isNotEmpty()) {
-                        IconButton(onClick = { query = "" }) {
-                            Icon(Icons.Default.Close, contentDescription = "Clear search")
-                        }
-                    }
-                },
-                singleLine = true,
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-            )
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                OutlinedTextField(
+                    value = query,
+                    onValueChange = { query = it },
+                    placeholder = { Text("Search") },
+                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                    trailingIcon = {
+                        if (query.isNotEmpty()) {
+                            IconButton(onClick = { query = "" }) {
+                                Icon(Icons.Default.Close, contentDescription = "Clear search")
+                            }
+                        }
+                    },
+                    singleLine = true,
+                    modifier = Modifier
+                        .weight(1f, fill = false)
+                        .widthIn(max = 200.dp),
+                )
+                if (!selectionMode) {
+                    Spacer(Modifier.weight(1f))
+                    Text(
+                        "Tracks",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    PillButton(text = "Sort: ${sorts[sort]}") {
+                        sort = (sort + 1) % sorts.size
+                    }
+                }
+            }
             if (selectionMode) {
                 Column(
                     modifier = Modifier
@@ -157,15 +178,6 @@ fun LibraryScreen(
                         TextButton(onClick = { showRemoveDialog = true }) { Text("Remove") }
                     }
                 }
-            } else {
-                SectionHeader(
-                    title = "Tracks",
-                    action = {
-                        PillButton(text = "Sort: ${sorts[sort]}") {
-                            sort = (sort + 1) % sorts.size
-                        }
-                    },
-                )
             }
         }
 
