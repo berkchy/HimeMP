@@ -459,7 +459,7 @@ impl Engine {
                 .write()
                 .unwrap_or_else(|poisoned| poisoned.into_inner());
             state.duration_ms = decoder.duration_ms;
-            state.track_id = Some(id);
+            state.track_id = Some(id.clone());
             state.position_ms = 0;
         }
         self.decoder = Some(decoder);
