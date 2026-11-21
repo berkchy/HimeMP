@@ -47,6 +47,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.palette.graphics.Palette
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import hime.mp.core.Track
@@ -83,13 +85,21 @@ fun MainScreen() {
         snapshotFlow { pagerState.settledPage }.collect { selectedTab = it }
     }
 
+    var navJob by remember { mutableStateOf<Job?>(null) }
     val goToPage: (Int) -> Unit = { page ->
-        selectedTab = page
-        scope.launch {
-            pagerState.animateScrollToPage(
-                page,
-                animationSpec = tween(420, easing = FastOutSlowInEasing),
-            )
+        navJob?.cancel()
+        navJob = scope.launch {
+            val current = pagerState.currentPage
+            val step = if (page > current) 1 else -1
+            var next = current
+            while (next != page) {
+                next += step
+                pagerState.animateScrollToPage(
+                    next,
+                    animationSpec = tween(320, easing = FastOutSlowInEasing),
+                )
+                delay(60)
+            }
         }
     }
 

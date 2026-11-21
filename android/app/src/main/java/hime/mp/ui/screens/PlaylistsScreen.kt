@@ -1,7 +1,6 @@
 package hime.mp.ui.screens
 
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -42,10 +41,13 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.dp
-import kotlin.math.abs
+import sh.calvin.reorderable.ReorderableItem
+import sh.calvin.reorderable.rememberReorderableLazyListState
 import hime.mp.core.Track
 import hime.mp.data.MusicRepository
 import hime.mp.ui.components.CardShape
@@ -227,6 +229,16 @@ private fun PlaylistDetailScreen(
             else -> MusicRepository.playlistTracks(id)
         }
     }
+    val hapticFeedback = LocalHapticFeedback.current
+    val reorderState = rememberReorderableLazyListState(listState) { from, to ->
+        if (id.startsWith("__")) return@rememberReorderableLazyListState
+        val list = currentTracks.toMutableList()
+        if (from.index in list.indices && to.index in list.indices) {
+            list.add(to.index, list.removeAt(from.index))
+            tracks = list
+            viewModel.moveTrack(id, from.index, to.index)
+        }
+    }
     Column(modifier = Modifier.fillMaxSize()) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = { onSelect(null) }) { Icon(Icons.Default.ArrowBack, "Back") }
@@ -248,45 +260,37 @@ private fun PlaylistDetailScreen(
         }
         LazyColumn(modifier = Modifier.weight(1f), state = listState) {
             itemsIndexed(tracks, key = { _, t -> t.id }) { index, track ->
-                var dragAccumulated by remember { mutableStateOf(0f) }
-                TrackRow(
-                    track = track,
-                    isPlaying = false,
-                    onPlay = { onPlayTracks(tracks, index) },
-                    onFavorite = {},
-                    shape = getGroupedItemShape(index, tracks.size),
-                    modifier = Modifier.pointerInput(track.id) {
-                        if (id.startsWith("__")) return@pointerInput
-                        detectDragGesturesAfterLongPress(
-                            onDragStart = { dragAccumulated = 0f },
-                            onDrag = { change, amount ->
-                                change.consume()
-                                dragAccumulated += amount.y
-                                if (abs(dragAccumulated) > 32f) {
-                                    val list = currentTracks
-                                    val from = list.indexOfFirst { it.id == track.id }
-                                    if (from >= 0) {
-                                        val target = (from + if (dragAccumulated > 0) 1 else -1)
-                                            .coerceIn(0, list.lastIndex)
-                                        if (target != from) {
-                                            viewModel.moveTrack(id, from, target)
-                                            dragAccumulated = 0f
-                                        }
-                                    }
-                                }
+                ReorderableItem(reorderState, key = track.id) { isDragging ->
+                    TrackRow(
+                        track = track,
+                        isPlaying = false,
+                        onPlay = { onPlayTracks(tracks, index) },
+                        onFavorite = {},
+                        shape = getGroupedItemShape(index, tracks.size),
+                        modifier = Modifier
+                            .longPressDraggableHandle(
+                                enabled = !id.startsWith("__"),
+                                onDragStarted = {
+                                    hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
+                                },
+                                onDragStopped = {
+                                    hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
+                                },
+                            )
+                            .graphicsLayer {
+                                val scale = if (isDragging) 1.02f else 1f
+                                scaleX = scale
+                                scaleY = scale
                             },
-                            onDragEnd = { dragAccumulated = 0f },
-                            onDragCancel = { dragAccumulated = 0f },
-                        )
-                    },
-                    trailing = {
-                        if (!id.startsWith("__")) {
-                            IconButton(onClick = { viewModel.removeTrack(id, track.id) }) {
-                                Icon(Icons.Default.Delete, "Remove from playlist")
+                        trailing = {
+                            if (!id.startsWith("__")) {
+                                IconButton(onClick = { viewModel.removeTrack(id, track.id) }) {
+                                    Icon(Icons.Default.Delete, "Remove from playlist")
+                                }
                             }
-                        }
-                    },
-                )
+                        },
+                    )
+                }
             }
         }
     }
