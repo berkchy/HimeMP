@@ -5,7 +5,6 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -21,7 +20,6 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.List
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -51,14 +49,12 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlin.math.abs
 import hime.mp.core.Track
 import hime.mp.data.PlaybackController
 import hime.mp.ui.components.MiniPlayer
 import hime.mp.ui.screens.FullPlayerScreen
 import hime.mp.ui.screens.LibraryScreen
 import hime.mp.ui.screens.PlaylistsScreen
-import hime.mp.ui.screens.SearchScreen
 import hime.mp.ui.screens.SettingsScreen
 import hime.mp.ui.theme.AlbumThemeController
 import hime.mp.ui.theme.HimeTheme
@@ -79,7 +75,7 @@ fun MainScreen() {
     var selectedPlaylist by remember { mutableStateOf<String?>(null) }
 
     val scope = rememberCoroutineScope()
-    val pagerState = rememberPagerState(pageCount = { 4 })
+    val pagerState = rememberPagerState(pageCount = { 3 })
     var selectedTab by remember { mutableIntStateOf(pagerState.currentPage) }
 
     LaunchedEffect(pagerState) {
@@ -90,18 +86,11 @@ fun MainScreen() {
     val goToPage: (Int) -> Unit = { page ->
         navJob?.cancel()
         navJob = scope.launch {
-            val current = pagerState.currentPage
-            val distance = abs(page - current)
-            if (distance > 0) {
-                selectedTab = page
-                pagerState.animateScrollToPage(
-                    page,
-                    animationSpec = tween(
-                        durationMillis = 320 * distance,
-                        easing = if (distance == 1) FastOutSlowInEasing else LinearEasing,
-                    ),
-                )
-            }
+            selectedTab = page
+            pagerState.animateScrollToPage(
+                page,
+                animationSpec = tween(420, easing = FastOutSlowInEasing),
+            )
         }
     }
 
@@ -172,9 +161,8 @@ fun MainScreen() {
                     ) {
                         val items = listOf(
                             Triple(0, Icons.Default.Home, "Library"),
-                            Triple(1, Icons.Default.Search, "Search"),
-                            Triple(2, Icons.Default.List, "Playlists"),
-                            Triple(3, Icons.Default.Settings, "Settings"),
+                            Triple(1, Icons.Default.List, "Playlists"),
+                            Triple(2, Icons.Default.Settings, "Settings"),
                         )
                         items.forEach { (page, icon, label) ->
                             NavigationBarItem(
@@ -182,7 +170,7 @@ fun MainScreen() {
                                 onClick = {
                                     fullPlayer = false
                                     goToPage(page)
-                                    if (page == 2) {
+                                    if (page == 1) {
                                         playlists.refresh()
                                     } else {
                                         selectedPlaylist = null
@@ -204,7 +192,7 @@ fun MainScreen() {
             ) {
                 HorizontalPager(
                     state = pagerState,
-                    beyondViewportPageCount = 3,
+                    beyondViewportPageCount = 2,
                     modifier = Modifier.fillMaxSize(),
                 ) { page ->
                     when (page) {
@@ -212,10 +200,7 @@ fun MainScreen() {
                             viewModel = library,
                             onPlayTracks = { tracks, index -> play(tracks, index) },
                         )
-                        1 -> SearchScreen(
-                            onPlayTracks = { tracks, index -> play(tracks, index) },
-                        )
-                        2 -> PlaylistsScreen(
+                        1 -> PlaylistsScreen(
                             viewModel = playlists,
                             selectedId = selectedPlaylist,
                             onSelect = { selectedPlaylist = it },

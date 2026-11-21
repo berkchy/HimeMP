@@ -12,11 +12,13 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -51,6 +53,7 @@ fun LibraryScreen(
     onPlayTracks: (List<Track>, Int) -> Unit,
 ) {
     var sort by remember { mutableStateOf(0) }
+    var query by remember { mutableStateOf("") }
     var selected by remember { mutableStateOf<Set<String>>(emptySet()) }
     var showPlaylistDialog by remember { mutableStateOf(false) }
     var showRemoveDialog by remember { mutableStateOf(false) }
@@ -63,7 +66,7 @@ fun LibraryScreen(
     val playerState by PlaybackController.state.collectAsState()
     val selectionMode = selected.isNotEmpty()
 
-    LaunchedEffect(sort) { listState.scrollToItem(0) }
+    LaunchedEffect(sort, query) { listState.scrollToItem(0) }
 
     val sortedTracks = remember(tracks, sort) {
         when (sorts[sort]) {
@@ -79,8 +82,38 @@ fun LibraryScreen(
         }
     }
 
+    val visibleTracks = remember(sortedTracks, query) {
+        val needle = query.trim()
+        if (needle.isBlank()) {
+            sortedTracks
+        } else {
+            sortedTracks.filter {
+                it.title.contains(needle, ignoreCase = true) ||
+                    it.artist.contains(needle, ignoreCase = true) ||
+                    it.album.contains(needle, ignoreCase = true)
+            }
+        }
+    }
+
     Column(modifier = Modifier.fillMaxSize()) {
         Surface(tonalElevation = 3.dp) {
+            OutlinedTextField(
+                value = query,
+                onValueChange = { query = it },
+                placeholder = { Text("Search library") },
+                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                trailingIcon = {
+                    if (query.isNotEmpty()) {
+                        IconButton(onClick = { query = "" }) {
+                            Icon(Icons.Default.Close, contentDescription = "Clear search")
+                        }
+                    }
+                },
+                singleLine = true,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+            )
             if (selectionMode) {
                 Column(
                     modifier = Modifier
@@ -98,7 +131,7 @@ fun LibraryScreen(
                         }
                     }
                     Row(modifier = Modifier.horizontalScroll(rememberScrollState())) {
-                        TextButton(onClick = { selected = sortedTracks.map { it.id }.toSet() }) {
+                        TextButton(onClick = { selected = visibleTracks.map { it.id }.toSet() }) {
                             Text("All")
                         }
                         TextButton(onClick = { selected = emptySet() }) { Text("None") }
@@ -137,7 +170,7 @@ fun LibraryScreen(
         }
 
         LazyColumn(modifier = Modifier.weight(1f), state = listState) {
-            itemsIndexed(sortedTracks, key = { _, track -> track.id }) { index, track ->
+            itemsIndexed(visibleTracks, key = { _, track -> track.id }) { index, track ->
                 TrackRow(
                     track = track,
                     isPlaying = false,
@@ -145,7 +178,7 @@ fun LibraryScreen(
                         if (selectionMode) {
                             selected = if (track.id in selected) selected - track.id else selected + track.id
                         } else {
-                            onPlayTracks(sortedTracks, index)
+                            onPlayTracks(visibleTracks, index)
                         }
                     },
                     onFavorite = { viewModel.toggleFavorite(track) },
@@ -162,14 +195,18 @@ fun LibraryScreen(
                         null
                     },
                     selected = track.id in selected,
-                    shape = getGroupedItemShape(index, sortedTracks.size),
+                    shape = getGroupedItemShape(index, visibleTracks.size),
                     onLongClick = { selected = selected + track.id },
                 )
             }
         }
-        if (tracks.isEmpty()) {
+        if (visibleTracks.isEmpty()) {
             Text(
-                "No tracks yet. Add a music folder in Settings, then rescan.",
+                if (query.isBlank()) {
+                    "No tracks yet. Add a music folder in Settings, then rescan."
+                } else {
+                    "No matching tracks."
+                },
                 modifier = Modifier.padding(16.dp),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
