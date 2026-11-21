@@ -50,6 +50,9 @@ object DiscordRpcManager {
     private var activityStartMs = 0L
     private var reconnectAttempts = 0
     private var pendingResume = false
+    private var pendingVerifier: String? = null
+    private var pendingState: String? = null
+    private var pendingRedirectUri: String? = null
     private var activityName = DEFAULT_NAME
     private var detailsTemplate = DEFAULT_DETAILS
     private var stateTemplate = DEFAULT_STATE
@@ -92,26 +95,101 @@ object DiscordRpcManager {
         if (!::store.isInitialized || callbackJob?.isActive == true) return
         val verifier = DiscordAuth.generateVerifier()
         val state = DiscordAuth.generateVerifier()
+        pendingVerifier = verifier
+        pendingState = state
+
+        val discordUrl = DiscordAuth.authorizationUrl(verifier, state, DiscordAuth.DISCORD_REDIRECT_URI)
+        if (openDiscordApp(context, discordUrl)) {
+            pendingRedirectUri = DiscordAuth.DISCORD_REDIRECT_URI
+            _status.value = "Waiting for Discord"
+            return
+        }
+
+        val server = runCatching { DiscordAuth.startCallbackServer() }
+            .onFailure { _status.value = "Port 9384 unavailable" }
+            .getOrNull() ?: return
+        pendingRedirectUri = DiscordAuth.REDIRECT_URI
+        _status.value = "Waiting for Discord"
         callbackJob = scope.launch {
             try {
-                _status.value = "Waiting for Discord"
-                val callback = DiscordAuth.waitForCallback()
-                if (callback.state != state) error("Discord state mismatch")
-                val tokens = DiscordAuth.exchange(callback.code, verifier)
-                store.accessToken = tokens.accessToken
-                tokens.refreshToken?.let { store.refreshToken = it }
-                store.expiresAt = System.currentTimeMillis() + tokens.expiresInMs
-                store.clearSession()
-                store.enabled = true
-                connect(resume = false)
+                val callback = server.await()
+                completeAuthorization(callback, verifier, DiscordAuth.REDIRECT_URI)
+            } catch (error: Exception) {
+                _status.value = error.message?.take(80) ?: "Connect failed"
+            } finally {
+                server.close()
+            }
+        }
+        val intent = Intent(
+            Intent.ACTION_VIEW,
+            Uri.parse(DiscordAuth.authorizationUrl(verifier, state, DiscordAuth.REDIRECT_URI)),
+        ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        runCatching { context.startActivity(intent) }
+            .onFailure {
+                callbackJob?.cancel()
+                server.close()
+                _status.value = "No browser available"
+            }
+    }
+
+    private fun openDiscordApp(context: Context, url: String): Boolean {
+        val discordUri = Uri.parse(url).buildUpon().scheme("discord").build()
+        val candidates = listOf(
+            Intent(Intent.ACTION_VIEW, discordUri),
+            Intent(Intent.ACTION_VIEW, Uri.parse(url)),
+        ).map { it.setPackage("com.discord") }
+        val intent = candidates.firstOrNull {
+            runCatching { it.resolveActivity(context.packageManager) != null }.getOrDefault(false)
+        } ?: return false
+        return runCatching {
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            context.startActivity(intent)
+        }.isSuccess
+    }
+
+    fun handleOAuthIntent(intent: Intent) {
+        val uri = intent.data ?: return
+        if (uri.scheme != "discord-${DiscordAuth.CLIENT_ID}") return
+        val code = uri.getQueryParameter("code") ?: return
+        val state = uri.getQueryParameter("state")
+        val verifier = pendingVerifier ?: return
+        if (pendingState != null && state != pendingState) {
+            _status.value = "Discord state mismatch"
+            return
+        }
+        callbackJob?.cancel()
+        callbackJob = scope.launch {
+            try {
+                completeAuthorization(
+                    DiscordAuth.Callback(code, state),
+                    verifier,
+                    DiscordAuth.DISCORD_REDIRECT_URI,
+                )
             } catch (error: Exception) {
                 _status.value = error.message?.take(80) ?: "Connect failed"
             }
         }
-        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(DiscordAuth.authorizationUrl(verifier, state)))
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        runCatching { context.startActivity(intent) }
-            .onFailure { _status.value = "No browser available" }
+    }
+
+    private suspend fun completeAuthorization(
+        callback: DiscordAuth.Callback,
+        verifier: String,
+        redirectUri: String,
+    ) {
+        try {
+            val tokens = DiscordAuth.exchange(callback.code, verifier, redirectUri)
+            store.accessToken = tokens.accessToken
+            tokens.refreshToken?.let { store.refreshToken = it }
+            store.expiresAt = System.currentTimeMillis() + tokens.expiresInMs
+            store.clearSession()
+            store.enabled = true
+            _status.value = "Connected"
+            connect(resume = false)
+        } finally {
+            pendingVerifier = null
+            pendingState = null
+            pendingRedirectUri = null
+        }
     }
 
     fun logout() {

@@ -18,6 +18,7 @@ import org.json.JSONObject
 object DiscordAuth {
     const val CLIENT_ID = "1573720763972722699"
     const val REDIRECT_URI = "http://127.0.0.1:9384/callback"
+    const val DISCORD_REDIRECT_URI = "discord-$CLIENT_ID:/authorize/callback"
 
     private const val PORT = 9384
     private const val SCOPES = "identify rpc rpc.activities.write"
@@ -34,17 +35,22 @@ object DiscordAuth {
 
     data class Callback(val code: String, val state: String?)
 
-    fun authorizationUrl(verifier: String, state: String): String {
+    fun authorizationUrl(
+        verifier: String,
+        state: String,
+        redirectUri: String = REDIRECT_URI,
+    ): String {
         val challenge = challenge(verifier)
         return AUTHORIZE_URL +
             "?response_type=code" +
             "&client_id=$CLIENT_ID" +
-            "&redirect_uri=${Uri.encode(REDIRECT_URI)}" +
+            "&redirect_uri=${Uri.encode(redirectUri)}" +
             "&scope=${Uri.encode(SCOPES)}" +
             "&state=$state" +
             "&code_challenge=$challenge" +
             "&code_challenge_method=S256" +
-            "&prompt=consent"
+            "&prompt=consent" +
+            "&integration_type=0"
     }
 
     fun generateVerifier(): String {
@@ -53,42 +59,57 @@ object DiscordAuth {
         return base64Url(bytes)
     }
 
-    suspend fun waitForCallback(): Callback = withContext(Dispatchers.IO) {
+    class CallbackServer internal constructor(private val server: ServerSocket) {
+        suspend fun await(): Callback = withContext(Dispatchers.IO) {
+            val socket = server.accept()
+            try {
+                val requestLine = BufferedReader(InputStreamReader(socket.getInputStream())).use { it.readLine() }
+                    ?: error("Empty Discord callback")
+                val target = requestLine.split(' ').getOrNull(1).orEmpty()
+                val uri = if (target.startsWith("http")) {
+                    Uri.parse(target)
+                } else {
+                    Uri.parse("http://127.0.0.1$target")
+                }
+                val code = uri.getQueryParameter("code") ?: error("Discord callback has no code")
+                val state = uri.getQueryParameter("state")
+                val html = "<!doctype html><title>HimeMP</title><p>Discord bağlantısı tamamlandı. Sekmeyi kapatabilirsin.</p>"
+                val response = (
+                    "HTTP/1.1 200 OK\r\n" +
+                        "Content-Type: text/html; charset=utf-8\r\n" +
+                        "Content-Length: ${html.toByteArray().size}\r\n" +
+                        "Connection: close\r\n\r\n" +
+                        html
+                    ).toByteArray()
+                socket.getOutputStream().use { it.write(response) }
+                Callback(code, state)
+            } finally {
+                runCatching { socket.close() }
+            }
+        }
+
+        fun close() = runCatching { server.close() }
+    }
+
+    fun startCallbackServer(): CallbackServer {
         val server = ServerSocket().apply {
             reuseAddress = true
             bind(InetSocketAddress("127.0.0.1", PORT))
         }
-        try {
-            val socket = server.accept()
-            val requestLine = BufferedReader(InputStreamReader(socket.getInputStream())).use { it.readLine() }
-                ?: error("Empty Discord callback")
-            val target = requestLine.split(' ').getOrNull(1).orEmpty()
-            val uri = Uri.parse("http://127.0.0.1$target")
-            val code = uri.getQueryParameter("code") ?: error("Discord callback has no code")
-            val state = uri.getQueryParameter("state")
-            val html = "<!doctype html><title>HimeMP</title><p>Discord bağlantısı tamamlandı. Sekmeyi kapatabilirsin.</p>"
-            val response = (
-                "HTTP/1.1 200 OK\r\n" +
-                    "Content-Type: text/html; charset=utf-8\r\n" +
-                    "Content-Length: ${html.toByteArray().size}\r\n" +
-                    "Connection: close\r\n\r\n" +
-                    html
-                ).toByteArray()
-            socket.getOutputStream().use { it.write(response) }
-            socket.close()
-            Callback(code, state)
-        } finally {
-            server.close()
-        }
+        return CallbackServer(server)
     }
 
-    suspend fun exchange(code: String, verifier: String): Tokens = withContext(Dispatchers.IO) {
+    suspend fun exchange(
+        code: String,
+        verifier: String,
+        redirectUri: String = REDIRECT_URI,
+    ): Tokens = withContext(Dispatchers.IO) {
         postForm(
             mapOf(
                 "client_id" to CLIENT_ID,
                 "grant_type" to "authorization_code",
                 "code" to code,
-                "redirect_uri" to REDIRECT_URI,
+                "redirect_uri" to redirectUri,
                 "code_verifier" to verifier,
             ),
         )
