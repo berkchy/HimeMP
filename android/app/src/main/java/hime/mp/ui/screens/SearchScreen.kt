@@ -31,7 +31,6 @@ import kotlinx.coroutines.delay
 @Composable
 fun SearchScreen(
     onPlayTracks: (List<Track>, Int) -> Unit,
-    onQueueNext: (Track) -> Unit,
 ) {
     var query by remember { mutableStateOf("") }
     var results by remember { mutableStateOf<List<Track>>(emptyList()) }
@@ -110,7 +109,6 @@ fun SearchScreen(
                         isPlaying = false,
                         onPlay = { onPlayTracks(results, index) },
                         onFavorite = {},
-                        onQueueNext = { onQueueNext(track) },
                         shape = getGroupedItemShape(index, results.size),
                     )
                 }

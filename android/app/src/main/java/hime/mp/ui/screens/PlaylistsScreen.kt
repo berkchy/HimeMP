@@ -18,7 +18,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.DragIndicator
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.MusicNote
@@ -62,10 +61,9 @@ fun PlaylistsScreen(
     selectedId: String?,
     onSelect: (String?) -> Unit,
     onPlayTracks: (List<Track>, Int) -> Unit,
-    onQueueNext: (Track) -> Unit,
 ) {
     if (selectedId != null) {
-        PlaylistDetailScreen(selectedId, viewModel, onSelect, onPlayTracks, onQueueNext)
+        PlaylistDetailScreen(selectedId, viewModel, onSelect, onPlayTracks)
         return
     }
     val playlists by viewModel.playlists.collectAsState()
@@ -214,7 +212,6 @@ private fun PlaylistDetailScreen(
     viewModel: PlaylistsViewModel,
     onSelect: (String?) -> Unit,
     onPlayTracks: (List<Track>, Int) -> Unit,
-    onQueueNext: (Track) -> Unit,
 ) {
     var tracks by remember { mutableStateOf<List<Track>>(emptyList()) }
     val listState = rememberLazyListState()
@@ -255,21 +252,18 @@ private fun PlaylistDetailScreen(
                     isPlaying = false,
                     onPlay = { onPlayTracks(tracks, index) },
                     onFavorite = {},
-                    onQueueNext = { onQueueNext(track) },
                     shape = getGroupedItemShape(index, tracks.size),
                     modifier = Modifier.pointerInput(index) {
                         if (id.startsWith("__")) return@pointerInput
                         detectDragGesturesAfterLongPress(
                             onDragStart = { dragAccumulated = 0f },
                             onDrag = { change, amount ->
+                                change.consume()
                                 dragAccumulated += amount.y
-                                if (abs(dragAccumulated) > 56f) {
+                                if (abs(dragAccumulated) > 48f) {
                                     val target = (index + if (dragAccumulated > 0) 1 else -1)
                                         .coerceIn(0, tracks.lastIndex)
-                                    if (target != index) {
-                                        viewModel.moveTrack(id, index, target)
-                                        change.consume()
-                                    }
+                                    if (target != index) viewModel.moveTrack(id, index, target)
                                     dragAccumulated = 0f
                                 }
                             },
@@ -279,11 +273,6 @@ private fun PlaylistDetailScreen(
                     },
                     trailing = {
                         if (!id.startsWith("__")) {
-                            Icon(
-                                Icons.Default.DragIndicator,
-                                contentDescription = "Drag to reorder",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
                             IconButton(onClick = { viewModel.removeTrack(id, track.id) }) {
                                 Icon(Icons.Default.Delete, "Remove from playlist")
                             }

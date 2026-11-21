@@ -49,7 +49,6 @@ private val sorts = listOf("Artist", "Album", "Title", "Duration", "Added")
 fun LibraryScreen(
     viewModel: LibraryViewModel,
     onPlayTracks: (List<Track>, Int) -> Unit,
-    onQueueNext: (Track) -> Unit,
 ) {
     var sort by remember { mutableStateOf(0) }
     var selected by remember { mutableStateOf<Set<String>>(emptySet()) }
@@ -150,7 +149,6 @@ fun LibraryScreen(
                         }
                     },
                     onFavorite = { viewModel.toggleFavorite(track) },
-                    onQueueNext = { onQueueNext(track) },
                     leading = if (selectionMode) {
                         {
                             Checkbox(

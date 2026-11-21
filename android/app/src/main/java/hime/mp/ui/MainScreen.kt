@@ -73,7 +73,6 @@ fun MainScreen() {
     var selectedPlaylist by remember { mutableStateOf<String?>(null) }
 
     val settingsMap by settings.settings.collectAsState()
-    val playerState by PlaybackController.state.collectAsState()
     val currentTrack by PlaybackController.currentTrack.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -180,18 +179,15 @@ fun MainScreen() {
                         "library" -> LibraryScreen(
                             viewModel = library,
                             onPlayTracks = { tracks, index -> play(tracks, index) },
-                            onQueueNext = { track -> queueNext(track, playerState.index) },
                         )
                         "search" -> SearchScreen(
                             onPlayTracks = { tracks, index -> play(tracks, index) },
-                            onQueueNext = { track -> queueNext(track, playerState.index) },
                         )
                         "playlists" -> PlaylistsScreen(
                             viewModel = playlists,
                             selectedId = selectedPlaylist,
                             onSelect = { selectedPlaylist = it },
                             onPlayTracks = { tracks, index -> play(tracks, index) },
-                            onQueueNext = { track -> queueNext(track, playerState.index) },
                         )
                         "settings" -> SettingsScreen(viewModel = settings)
                     }
@@ -221,8 +217,4 @@ fun MainScreen() {
 
 private fun play(tracks: List<Track>, index: Int) {
     PlaybackController.playTracks(tracks, index)
-}
-
-private fun queueNext(track: Track, currentIndex: Int) {
-    PlaybackController.queueAdd(listOf(track.id), (currentIndex + 1).coerceAtLeast(0))
 }
