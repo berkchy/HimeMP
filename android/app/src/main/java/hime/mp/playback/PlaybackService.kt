@@ -23,6 +23,7 @@ import hime.mp.MainActivity
 import hime.mp.R
 import hime.mp.core.PlaybackState
 import hime.mp.data.PlaybackController
+import hime.mp.discord.DiscordRpcManager
 import hime.mp.util.ArtCache
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers

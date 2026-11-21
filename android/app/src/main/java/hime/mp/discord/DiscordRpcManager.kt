@@ -258,7 +258,7 @@ object DiscordRpcManager {
         return activity
     }
 
-    private fun handleMessage(text: String) {
+    internal fun handleMessage(text: String) {
         val message = runCatching { JSONObject(text) }.getOrNull() ?: return
         val op = message.optInt("op")
         if (op == 0) {
@@ -303,7 +303,7 @@ object DiscordRpcManager {
         if (op == 11) Unit
     }
 
-    private fun handleClose(code: Int) {
+    internal fun handleClose(code: Int) {
         webSocket = null
         heartbeatJob?.cancel()
         if (code == 1000 || !store.enabled) {
@@ -342,9 +342,9 @@ object DiscordRpcManager {
         if (clearTokens) store.clear()
     }
 
-    private inner class GatewayListener : WebSocketListener() {
+    private class GatewayListener : WebSocketListener() {
         override fun onMessage(webSocket: WebSocket, text: String) {
-            handleMessage(text)
+            DiscordRpcManager.handleMessage(text)
         }
 
         override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
@@ -352,11 +352,11 @@ object DiscordRpcManager {
         }
 
         override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
-            handleClose(code)
+            DiscordRpcManager.handleClose(code)
         }
 
         override fun onFailure(webSocket: WebSocket, error: Throwable, response: Response?) {
-            handleClose(0)
+            DiscordRpcManager.handleClose(0)
         }
     }
 }
