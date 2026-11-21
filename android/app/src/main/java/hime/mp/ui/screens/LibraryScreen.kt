@@ -123,7 +123,7 @@ fun LibraryScreen(
                         .height(48.dp),
                 )
                 if (!selectionMode) {
-                    Spacer(Modifier.weight(1f))
+                    Spacer(Modifier.width(8.dp))
                     Text(
                         "Tracks",
                         style = MaterialTheme.typography.labelLarge,
