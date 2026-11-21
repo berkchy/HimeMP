@@ -119,6 +119,15 @@ object PlaybackController : NativeBridge.EventListener {
         }
     }
 
+    fun toggleFavoriteCurrent() {
+        val track = _currentTrack.value ?: return
+        val next = !track.favorite
+        _currentTrack.value = track.copy(favorite = next)
+        scope.launch(Dispatchers.IO) {
+            runCatching { MusicRepository.setFavorite(track.id, next) }
+        }
+    }
+
     fun play() {
         NativeBridge.play()
         startService()

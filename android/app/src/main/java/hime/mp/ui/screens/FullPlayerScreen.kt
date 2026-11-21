@@ -1,7 +1,10 @@
 package hime.mp.ui.screens
 
+import android.content.Context
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
@@ -41,6 +44,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Slider
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -49,11 +53,16 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import hime.mp.core.PlaybackState
@@ -62,8 +71,11 @@ import hime.mp.data.MusicRepository
 import hime.mp.data.PlaybackController
 import hime.mp.ui.components.AlbumArt
 import hime.mp.ui.theme.LocalHimeMotion
+import hime.mp.ui.theme.containerOf
 import hime.mp.util.formatDuration
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.launch
 import kotlin.math.abs
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -78,6 +90,9 @@ fun FullPlayerScreen(
     var scrubbing by remember { mutableStateOf(false) }
     var scrub by remember { mutableStateOf(0f) }
     var showQueue by remember { mutableStateOf(false) }
+    var artWidth by remember { mutableStateOf(0) }
+    var dragOffset by remember { mutableStateOf(0f) }
+    val scope = rememberCoroutineScope()
 
     LaunchedEffect(Unit) { PlaybackController.refreshState() }
     LaunchedEffect(state.positionMs, state.durationMs, scrubbing) {
@@ -132,21 +147,61 @@ fun FullPlayerScreen(
                     .fillMaxWidth()
                     .padding(horizontal = 24.dp, vertical = 12.dp)
                     .aspectRatio(1f)
+                    .onSizeChanged { artWidth = it.width }
+                    .graphicsLayer {
+                        translationX = dragOffset
+                        rotationZ = if (artWidth > 0) dragOffset / artWidth * 6f else 0f
+                        alpha = if (artWidth > 0) {
+                            1f - (abs(dragOffset) / artWidth).coerceIn(0f, 0.2f)
+                        } else {
+                            1f
+                        }
+                    }
                     .pointerInput(Unit) {
-                        var totalDrag = 0f
                         detectHorizontalDragGestures(
-                            onDragStart = { totalDrag = 0f },
+                            onDragStart = { dragOffset = 0f },
                             onHorizontalDrag = { change, amount ->
-                                totalDrag += amount
+                                dragOffset += amount
                                 change.consume()
                             },
                             onDragEnd = {
-                                if (abs(totalDrag) > 80f) {
-                                    if (totalDrag > 0) PlaybackController.previous()
-                                    else PlaybackController.next()
+                                val width = artWidth.toFloat().takeIf { it > 0f } ?: 1000f
+                                if (abs(dragOffset) > 80f) {
+                                    val direction = if (dragOffset > 0) 1 else -1
+                                    scope.launch {
+                                        animate(
+                                            initialValue = dragOffset,
+                                            targetValue = direction * width,
+                                            animationSpec = tween(180),
+                                        ) { value, _ -> dragOffset = value }
+                                        if (direction > 0) PlaybackController.previous()
+                                        else PlaybackController.next()
+                                        dragOffset = -direction * width
+                                        animate(
+                                            initialValue = dragOffset,
+                                            targetValue = 0f,
+                                            animationSpec = tween(240),
+                                        ) { value, _ -> dragOffset = value }
+                                    }
+                                } else {
+                                    scope.launch {
+                                        animate(
+                                            initialValue = dragOffset,
+                                            targetValue = 0f,
+                                            animationSpec = tween(160),
+                                        ) { value, _ -> dragOffset = value }
+                                    }
                                 }
                             },
-                            onDragCancel = {},
+                            onDragCancel = {
+                                scope.launch {
+                                    animate(
+                                        initialValue = dragOffset,
+                                        targetValue = 0f,
+                                        animationSpec = tween(160),
+                                    ) { value, _ -> dragOffset = value }
+                                }
+                            },
                         )
                     },
                 corner = 28.dp,
@@ -199,53 +254,62 @@ fun FullPlayerScreen(
         }
 
         Spacer(Modifier.weight(1f))
-        Row(
+        Surface(
+            shape = MaterialTheme.shapes.extraLarge,
+            color = containerOf(MaterialTheme.colorScheme.secondary, dark = true),
+            tonalElevation = 2.dp,
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(bottom = 16.dp),
-            horizontalArrangement = Arrangement.SpaceEvenly,
-            verticalAlignment = Alignment.CenterVertically,
         ) {
-            IconButton(onClick = { PlaybackController.setShuffle(!state.shuffle) }) {
-                Icon(
-                    Icons.Default.Shuffle,
-                    contentDescription = "Shuffle",
-                    tint = if (state.shuffle) MaterialTheme.colorScheme.primary
-                    else MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            IconButton(onClick = { PlaybackController.previous() }) {
-                Icon(Icons.Default.SkipPrevious, contentDescription = "Previous")
-            }
-            FilledIconButton(
-                onClick = { PlaybackController.togglePlay() },
-                modifier = Modifier.size(68.dp),
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                AnimatedContent(
-                    targetState = state.playing,
-                    transitionSpec = {
-                        fadeIn(animationSpec = androidx.compose.animation.core.tween(motion.quick)) togetherWith
-                            fadeOut(animationSpec = androidx.compose.animation.core.tween(motion.quick))
-                    },
-                    label = "playPauseFull",
-                ) { playing ->
+                IconButton(onClick = { PlaybackController.setShuffle(!state.shuffle) }) {
                     Icon(
-                        if (playing) Icons.Default.Pause else Icons.Default.PlayArrow,
-                        contentDescription = if (playing) "Pause" else "Play",
-                        modifier = Modifier.size(32.dp),
+                        Icons.Default.Shuffle,
+                        contentDescription = "Shuffle",
+                        tint = if (state.shuffle) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-            }
-            IconButton(onClick = { PlaybackController.next() }) {
-                Icon(Icons.Default.SkipNext, contentDescription = "Next")
-            }
-            IconButton(onClick = { PlaybackController.setRepeat((state.repeat + 1) % 3) }) {
-                Icon(
-                    if (state.repeat == 2) Icons.Default.RepeatOne else Icons.Default.Repeat,
-                    contentDescription = "Repeat",
-                    tint = if (state.repeat != 0) MaterialTheme.colorScheme.primary
-                    else MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                IconButton(onClick = { PlaybackController.previous() }) {
+                    Icon(Icons.Default.SkipPrevious, contentDescription = "Previous")
+                }
+                FilledIconButton(
+                    onClick = { PlaybackController.togglePlay() },
+                    modifier = Modifier.size(68.dp),
+                ) {
+                    AnimatedContent(
+                        targetState = state.playing,
+                        transitionSpec = {
+                            fadeIn(animationSpec = androidx.compose.animation.core.tween(motion.quick)) togetherWith
+                                fadeOut(animationSpec = androidx.compose.animation.core.tween(motion.quick))
+                        },
+                        label = "playPauseFull",
+                    ) { playing ->
+                        Icon(
+                            if (playing) Icons.Default.Pause else Icons.Default.PlayArrow,
+                            contentDescription = if (playing) "Pause" else "Play",
+                            modifier = Modifier.size(32.dp),
+                        )
+                    }
+                }
+                IconButton(onClick = { PlaybackController.next() }) {
+                    Icon(Icons.Default.SkipNext, contentDescription = "Next")
+                }
+                IconButton(onClick = { PlaybackController.setRepeat((state.repeat + 1) % 3) }) {
+                    Icon(
+                        if (state.repeat == 2) Icons.Default.RepeatOne else Icons.Default.Repeat,
+                        contentDescription = "Repeat",
+                        tint = if (state.repeat != 0) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
         }
     }
@@ -259,16 +323,31 @@ fun FullPlayerScreen(
 
 @Composable
 private fun QueueSheet(state: PlaybackState) {
+    val context = LocalContext.current
+    val prefs = remember { context.getSharedPreferences("himemp_ui", Context.MODE_PRIVATE) }
+    val savedIndex = remember { prefs.getInt("queue_scroll_index", 0) }
+    val savedOffset = remember { prefs.getInt("queue_scroll_offset", 0) }
     var tracks by remember { mutableStateOf<List<Track>>(emptyList()) }
-    val listState = rememberLazyListState()
+    val listState = rememberLazyListState(savedIndex, savedOffset)
     LaunchedEffect(state.queue) {
         delay(60)
         tracks = state.queue.mapNotNull { runCatching { MusicRepository.track(it) }.getOrNull() }
-    }
-    LaunchedEffect(state.index, tracks) {
-        if (state.index in tracks.indices) {
-            runCatching { listState.animateScrollToItem(state.index) }
+        if (tracks.isNotEmpty()) {
+            if (savedIndex > 0) {
+                listState.scrollToItem(savedIndex.coerceIn(0, tracks.lastIndex), savedOffset)
+            } else if (state.index in tracks.indices) {
+                listState.scrollToItem(state.index)
+            }
         }
+    }
+    LaunchedEffect(Unit) {
+        snapshotFlow { listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset }
+            .collect { (index, offset) ->
+                prefs.edit()
+                    .putInt("queue_scroll_index", index)
+                    .putInt("queue_scroll_offset", offset)
+                    .apply()
+            }
     }
     Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
         Text("Up next", style = MaterialTheme.typography.titleLarge)

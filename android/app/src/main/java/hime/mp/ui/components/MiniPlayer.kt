@@ -1,11 +1,13 @@
 package hime.mp.ui.components
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.animate
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -15,7 +17,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -25,19 +26,28 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import hime.mp.data.PlaybackController
 import hime.mp.ui.theme.LocalHimeMotion
+import kotlinx.coroutines.launch
+import kotlin.math.abs
 
 @Composable
 fun MiniPlayer(onExpand: () -> Unit) {
     val state by PlaybackController.state.collectAsState()
     val track by PlaybackController.currentTrack.collectAsState()
     val motion = LocalHimeMotion.current
+    var dragX by remember { mutableStateOf(0f) }
+    val scope = rememberCoroutineScope()
     if (track == null) return
 
     val fraction = if (state.durationMs > 0) {
@@ -55,12 +65,45 @@ fun MiniPlayer(onExpand: () -> Unit) {
             .fillMaxWidth()
             .clickable(onClick = onExpand)
             .pointerInput(Unit) {
-                detectVerticalDragGestures { change, dragAmount ->
-                    if (dragAmount < -12f) {
-                        change.consume()
-                        onExpand()
-                    }
-                }
+                var totalX = 0f
+                var totalY = 0f
+                var expanded = false
+                detectDragGestures(
+                    onDragStart = {
+                        totalX = 0f
+                        totalY = 0f
+                        expanded = false
+                        dragX = 0f
+                    },
+                    onDrag = { change, amount ->
+                        totalX += amount.x
+                        totalY += amount.y
+                        if (abs(totalX) > abs(totalY)) {
+                            dragX = totalX
+                            change.consume()
+                        } else if (totalY < -12f) {
+                            change.consume()
+                            if (!expanded) {
+                                expanded = true
+                                onExpand()
+                            }
+                        }
+                    },
+                    onDragEnd = {
+                        if (abs(totalX) > 80f && abs(totalX) > abs(totalY)) {
+                            if (totalX > 0) PlaybackController.previous()
+                            else PlaybackController.next()
+                        }
+                        scope.launch {
+                            animate(dragX, 0f, tween(180)) { value, _ -> dragX = value }
+                        }
+                    },
+                    onDragCancel = {
+                        scope.launch {
+                            animate(dragX, 0f, tween(180)) { value, _ -> dragX = value }
+                        }
+                    },
+                )
             },
     ) {
         Column {
@@ -77,7 +120,12 @@ fun MiniPlayer(onExpand: () -> Unit) {
                     .padding(horizontal = 12.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                AlbumArt(track, modifier = Modifier.size(42.dp))
+                AlbumArt(
+                    track,
+                    modifier = Modifier
+                        .size(42.dp)
+                        .graphicsLayer { translationX = dragX * 0.35f },
+                )
                 Column(
                     modifier = Modifier
                         .weight(1f)
@@ -111,9 +159,6 @@ fun MiniPlayer(onExpand: () -> Unit) {
                             contentDescription = if (playing) "Pause" else "Play",
                         )
                     }
-                }
-                IconButton(onClick = { PlaybackController.next() }) {
-                    Icon(Icons.Default.SkipNext, contentDescription = "Next")
                 }
             }
         }

@@ -439,7 +439,15 @@ impl Engine {
             .find(&id)
             .map(|track| track.path.clone())
             .ok_or_else(|| Error::NotFound(id.clone()))?;
-        let decoder = PcmDecoder::open(&path)?;
+        let resume_ms = self
+            .state
+            .read()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .position_ms;
+        let mut decoder = PcmDecoder::open(&path)?;
+        if resume_ms > 0 {
+            let _ = decoder.seek(resume_ms);
+        }
         let spec = (decoder.sample_rate, decoder.output_channels);
         if self.sink_spec != Some(spec) {
             if let Some(mut old) = self.sink.take() {
@@ -460,7 +468,7 @@ impl Engine {
                 .unwrap_or_else(|poisoned| poisoned.into_inner());
             state.duration_ms = decoder.duration_ms;
             state.track_id = Some(id.clone());
-            state.position_ms = 0;
+            state.position_ms = decoder.position_ms();
         }
         self.decoder = Some(decoder);
         self.events.emit("trackChanged", &id);

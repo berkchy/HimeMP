@@ -29,6 +29,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -42,6 +43,8 @@ class PlaybackService : Service() {
         const val ACTION_NEXT = "hime.mp.action.NEXT"
         const val ACTION_PREVIOUS = "hime.mp.action.PREVIOUS"
         const val ACTION_STOP = "hime.mp.action.STOP"
+        const val ACTION_FAVORITE = "hime.mp.action.FAVORITE"
+        const val ACTION_CLOSE = "hime.mp.action.CLOSE"
     }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -49,6 +52,7 @@ class PlaybackService : Service() {
     private var focusRequest: AudioFocusRequest? = null
     private val deviceReceiver = DeviceEventReceiver()
     private var receiverRegistered = false
+    private var closing = false
 
     override fun onCreate() {
         super.onCreate()
@@ -69,7 +73,10 @@ class PlaybackService : Service() {
             receiverRegistered = true
         }
         scope.launch {
-            PlaybackController.state.collectLatest { render(it) }
+            combine(
+                PlaybackController.state,
+                PlaybackController.currentTrack,
+            ) { state, _ -> state }.collectLatest { render(it) }
         }
     }
 
@@ -87,6 +94,14 @@ class PlaybackService : Service() {
             ACTION_NEXT -> PlaybackController.next()
             ACTION_PREVIOUS -> PlaybackController.previous()
             ACTION_STOP -> PlaybackController.stop()
+            ACTION_FAVORITE -> PlaybackController.toggleFavoriteCurrent()
+            ACTION_CLOSE -> {
+                closing = true
+                stopForeground(STOP_FOREGROUND_REMOVE)
+                PlaybackController.stop()
+                stopSelf()
+                return START_NOT_STICKY
+            }
         }
         val initial = PlaybackController.state.value
         startForeground(NOTIFICATION_ID, buildNotification(initial, null))
@@ -176,6 +191,7 @@ class PlaybackService : Service() {
     }
 
     private suspend fun render(state: PlaybackState) {
+        if (closing) return
         val track = PlaybackController.currentTrack.value
         val art = withContext(Dispatchers.IO) { track?.let { ArtCache.loadBlocking(it) } }
         val metadata = MediaMetadataCompat.Builder()
@@ -227,7 +243,7 @@ class PlaybackService : Service() {
             .setSmallIcon(R.drawable.ic_stat_music)
             .setLargeIcon(art)
             .setContentIntent(openAppIntent())
-            .setDeleteIntent(serviceIntent(ACTION_STOP))
+            .setDeleteIntent(serviceIntent(ACTION_CLOSE))
             .setOngoing(state.playing)
             .setOnlyAlertOnce(true)
             .setVisibility(Notification.VISIBILITY_PUBLIC)
@@ -240,20 +256,28 @@ class PlaybackService : Service() {
             .setColorized(true)
             .addAction(
                 action(
-                    android.R.drawable.ic_media_previous,
+                    R.drawable.ic_notif_previous,
                     "Previous",
                     ACTION_PREVIOUS,
                 ),
             )
             .addAction(
                 action(
-                    if (state.playing) android.R.drawable.ic_media_pause
-                    else android.R.drawable.ic_media_play,
+                    if (state.playing) R.drawable.ic_notif_pause
+                    else R.drawable.ic_notif_play,
                     if (state.playing) "Pause" else "Play",
                     ACTION_TOGGLE,
                 ),
             )
-            .addAction(action(android.R.drawable.ic_media_next, "Next", ACTION_NEXT))
+            .addAction(action(R.drawable.ic_notif_next, "Next", ACTION_NEXT))
+            .addAction(
+                action(
+                    R.drawable.ic_notif_favorite,
+                    if (track?.favorite == true) "Unfavorite" else "Favorite",
+                    ACTION_FAVORITE,
+                ),
+            )
+            .addAction(action(R.drawable.ic_notif_close, "Close", ACTION_CLOSE))
             .setStyle(
                 androidx.media.app.NotificationCompat.MediaStyle()
                     .setMediaSession(session.sessionToken)
