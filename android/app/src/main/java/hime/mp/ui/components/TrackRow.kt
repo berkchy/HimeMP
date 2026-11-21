@@ -49,7 +49,7 @@ fun TrackRow(
         } else {
             MaterialTheme.colorScheme.surfaceContainer
         },
-        modifier = modifier
+        modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 12.dp, vertical = 3.dp)
             .then(
@@ -58,7 +58,8 @@ fun TrackRow(
                 } else {
                     Modifier.clickable(onClick = onPlay)
                 }
-            ),
+            )
+            .then(modifier),
     ) {
         Row(
             modifier = Modifier

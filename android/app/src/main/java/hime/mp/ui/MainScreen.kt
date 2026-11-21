@@ -3,19 +3,20 @@ package hime.mp.ui
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
-import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.List
@@ -34,9 +35,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -68,9 +72,26 @@ fun MainScreen() {
     val playlists: PlaylistsViewModel = viewModel()
     val settings: SettingsViewModel = viewModel()
 
-    var destination by remember { mutableStateOf("library") }
     var fullPlayer by remember { mutableStateOf(false) }
     var selectedPlaylist by remember { mutableStateOf<String?>(null) }
+
+    val scope = rememberCoroutineScope()
+    val pagerState = rememberPagerState(pageCount = { 4 })
+    var selectedTab by remember { mutableIntStateOf(pagerState.currentPage) }
+
+    LaunchedEffect(pagerState) {
+        snapshotFlow { pagerState.settledPage }.collect { selectedTab = it }
+    }
+
+    val goToPage: (Int) -> Unit = { page ->
+        selectedTab = page
+        scope.launch {
+            pagerState.animateScrollToPage(
+                page,
+                animationSpec = tween(420, easing = FastOutSlowInEasing),
+            )
+        }
+    }
 
     val settingsMap by settings.settings.collectAsState()
     val currentTrack by PlaybackController.currentTrack.collectAsState()
@@ -117,6 +138,9 @@ fun MainScreen() {
 
     BackHandler(enabled = fullPlayer) { fullPlayer = false }
     BackHandler(enabled = !fullPlayer && selectedPlaylist != null) { selectedPlaylist = null }
+    BackHandler(enabled = !fullPlayer && selectedPlaylist == null && pagerState.currentPage != 0) {
+        goToPage(0)
+    }
 
     HimeTheme(
         themeMode = settingsMap["theme"] ?: "system",
@@ -135,61 +159,57 @@ fun MainScreen() {
                         tonalElevation = 3.dp,
                     ) {
                         val items = listOf(
-                            "library" to Icons.Default.Home,
-                            "search" to Icons.Default.Search,
-                            "playlists" to Icons.Default.List,
-                            "settings" to Icons.Default.Settings,
+                            Triple(0, Icons.Default.Home, "Library"),
+                            Triple(1, Icons.Default.Search, "Search"),
+                            Triple(2, Icons.Default.List, "Playlists"),
+                            Triple(3, Icons.Default.Settings, "Settings"),
                         )
-                        items.forEach { (route, icon) ->
+                        items.forEach { (page, icon, label) ->
                             NavigationBarItem(
-                                selected = destination == route,
+                                selected = selectedTab == page,
                                 onClick = {
                                     fullPlayer = false
-                                    destination = route
-                                    if (route == "playlists") {
+                                    goToPage(page)
+                                    if (page == 2) {
                                         playlists.refresh()
                                     } else {
                                         selectedPlaylist = null
                                     }
                                 },
-                                icon = { Icon(icon, contentDescription = route) },
-                                label = { Text(route.replaceFirstChar { it.uppercase() }) },
+                                icon = { Icon(icon, contentDescription = label) },
+                                label = { Text(label) },
                             )
                         }
                     }
                 }
             },
         ) { padding ->
-            androidx.compose.foundation.layout.Box(
+            Box(
                 modifier = Modifier
                     .padding(padding)
+                    .consumeWindowInsets(padding)
                     .fillMaxSize(),
             ) {
-                AnimatedContent(
-                    targetState = destination,
-                    transitionSpec = {
-                        (slideInHorizontally { fullWidth -> fullWidth / 4 } +
-                            fadeIn(animationSpec = tween(180))) togetherWith
-                            (slideOutHorizontally { fullWidth -> -fullWidth / 4 } +
-                                fadeOut(animationSpec = tween(180)))
-                    },
-                    label = "destination",
-                ) { dest ->
-                    when (dest) {
-                        "library" -> LibraryScreen(
+                HorizontalPager(
+                    state = pagerState,
+                    beyondViewportPageCount = 3,
+                    modifier = Modifier.fillMaxSize(),
+                ) { page ->
+                    when (page) {
+                        0 -> LibraryScreen(
                             viewModel = library,
                             onPlayTracks = { tracks, index -> play(tracks, index) },
                         )
-                        "search" -> SearchScreen(
+                        1 -> SearchScreen(
                             onPlayTracks = { tracks, index -> play(tracks, index) },
                         )
-                        "playlists" -> PlaylistsScreen(
+                        2 -> PlaylistsScreen(
                             viewModel = playlists,
                             selectedId = selectedPlaylist,
                             onSelect = { selectedPlaylist = it },
                             onPlayTracks = { tracks, index -> play(tracks, index) },
                         )
-                        "settings" -> SettingsScreen(viewModel = settings)
+                        else -> SettingsScreen(viewModel = settings)
                     }
                 }
 

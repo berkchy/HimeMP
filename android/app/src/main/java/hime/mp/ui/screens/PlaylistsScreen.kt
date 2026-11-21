@@ -38,6 +38,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -214,10 +215,11 @@ private fun PlaylistDetailScreen(
     onPlayTracks: (List<Track>, Int) -> Unit,
 ) {
     var tracks by remember { mutableStateOf<List<Track>>(emptyList()) }
+    val currentTracks by rememberUpdatedState(tracks)
     val listState = rememberLazyListState()
     val playlists by viewModel.playlists.collectAsState()
     LaunchedEffect(id) { listState.scrollToItem(0) }
-    LaunchedEffect(id) {
+    LaunchedEffect(id, playlists) {
         tracks = when (id) {
             "__favorites__" -> MusicRepository.favorites()
             "__recent__" -> MusicRepository.recentlyPlayed()
@@ -253,22 +255,28 @@ private fun PlaylistDetailScreen(
                     onPlay = { onPlayTracks(tracks, index) },
                     onFavorite = {},
                     shape = getGroupedItemShape(index, tracks.size),
-                    modifier = Modifier.pointerInput(index) {
+                    modifier = Modifier.pointerInput(track.id) {
                         if (id.startsWith("__")) return@pointerInput
                         detectDragGesturesAfterLongPress(
                             onDragStart = { dragAccumulated = 0f },
                             onDrag = { change, amount ->
                                 change.consume()
                                 dragAccumulated += amount.y
-                                if (abs(dragAccumulated) > 48f) {
-                                    val target = (index + if (dragAccumulated > 0) 1 else -1)
-                                        .coerceIn(0, tracks.lastIndex)
-                                    if (target != index) viewModel.moveTrack(id, index, target)
-                                    dragAccumulated = 0f
+                                if (abs(dragAccumulated) > 32f) {
+                                    val list = currentTracks
+                                    val from = list.indexOfFirst { it.id == track.id }
+                                    if (from >= 0) {
+                                        val target = (from + if (dragAccumulated > 0) 1 else -1)
+                                            .coerceIn(0, list.lastIndex)
+                                        if (target != from) {
+                                            viewModel.moveTrack(id, from, target)
+                                            dragAccumulated = 0f
+                                        }
+                                    }
                                 }
                             },
-                            onDragEnd = {},
-                            onDragCancel = {},
+                            onDragEnd = { dragAccumulated = 0f },
+                            onDragCancel = { dragAccumulated = 0f },
                         )
                     },
                     trailing = {
