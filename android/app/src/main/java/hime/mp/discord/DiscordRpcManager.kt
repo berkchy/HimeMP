@@ -44,6 +44,7 @@ object DiscordRpcManager {
     private var currentPlaying = false
     private var activityStartMs = 0L
     private var reconnectAttempts = 0
+    private var pendingResume = false
     private var lastPresenceKey = ""
     private var lastPresenceAt = 0L
 
