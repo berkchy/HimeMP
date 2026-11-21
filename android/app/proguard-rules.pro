@@ -5,3 +5,4 @@
     native <methods>;
 }
 -keep class hime.mp.data.model.** { *; }
+-dontwarn com.google.errorprone.annotations.**
