@@ -200,92 +200,100 @@ fun SettingsScreen(viewModel: SettingsViewModel) {
         item {
             Section("Discord Rich Presence")
             SettingsCard {
-                val rpcStatus by DiscordRpcManager.status.collectAsState()
-                val state by PlaybackController.state.collectAsState()
-                val track by PlaybackController.currentTrack.collectAsState()
-                SettingSwitch(
-                    label = "Enable Rich Presence",
-                    checked = settings["discordRpc"]?.toBoolean() ?: false,
-                    onChange = {
-                        updateDiscordSetting("discordRpc", it.toString())
-                        DiscordRpcManager.setEnabled(it)
-                    },
-                )
-                Spacer(Modifier.height(8.dp))
-                SettingDropdown(
-                    label = "Presence status",
-                    value = settings["discordPresenceStatus"] ?: "auto",
-                    options = listOf(
-                        "auto" to "Auto",
-                        "online" to "Online",
-                        "idle" to "Idle",
-                        "dnd" to "Do Not Disturb",
-                        "invisible" to "Invisible",
-                    ),
-                    onChange = { updateDiscordSetting("discordPresenceStatus", it) },
-                )
-                SettingDropdown(
-                    label = "Activity type",
-                    value = settings["discordActivityType"] ?: "2",
-                    options = listOf(
-                        "0" to "Playing",
-                        "1" to "Streaming",
-                        "2" to "Listening",
-                        "3" to "Watching",
-                    ),
-                    onChange = { updateDiscordSetting("discordActivityType", it) },
-                )
-                SettingTextField(
-                    label = "Activity name",
-                    value = settings["discordName"] ?: DiscordRpcManager.DEFAULT_NAME,
-                    onChange = { updateDiscordSetting("discordName", it) },
-                )
-                SettingTextField(
-                    label = "Details",
-                    value = settings["discordDetails"] ?: DiscordRpcManager.DEFAULT_DETAILS,
-                    onChange = { updateDiscordSetting("discordDetails", it) },
-                )
-                SettingTextField(
-                    label = "State",
-                    value = settings["discordState"] ?: DiscordRpcManager.DEFAULT_STATE,
-                    onChange = { updateDiscordSetting("discordState", it) },
-                )
-                Text(
-                    "Formats: <hime.player.song.name> <hime.player.song.artist> <hime.player.song.album> <hime.player.song.info> <hime.player.status> <hime.player.song.duration> <hime.player.song.remaining>",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Spacer(Modifier.height(8.dp))
-                val connecting = rpcStatus == "Waiting for Discord" || rpcStatus.startsWith("Connecting")
-                Button(
-                    onClick = {
-                        if (rpcStatus == "Connected") {
-                            DiscordRpcManager.setEnabled(false)
-                            updateDiscordSetting("discordRpc", "false")
-                        } else {
-                            DiscordRpcManager.authorize(context)
-                        }
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    enabled = !connecting,
-                ) {
+                if (!DiscordRpcManager.RPC_APPROVED) {
                     Text(
-                        when {
-                            rpcStatus == "Connected" -> "Disconnect"
-                            connecting -> "Connecting..."
-                            rpcStatus.startsWith("Error") -> "Retry"
-                            else -> "Connect"
+                        "Discord RPC onayı bekliyor. Onay gelince Connect ve özelleştirme seçenekleri açılacak.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                } else {
+                    val rpcStatus by DiscordRpcManager.status.collectAsState()
+                    val state by PlaybackController.state.collectAsState()
+                    val track by PlaybackController.currentTrack.collectAsState()
+                    SettingSwitch(
+                        label = "Enable Rich Presence",
+                        checked = settings["discordRpc"]?.toBoolean() ?: false,
+                        onChange = {
+                            updateDiscordSetting("discordRpc", it.toString())
+                            DiscordRpcManager.setEnabled(it)
                         },
                     )
+                    Spacer(Modifier.height(8.dp))
+                    SettingDropdown(
+                        label = "Presence status",
+                        value = settings["discordPresenceStatus"] ?: "auto",
+                        options = listOf(
+                            "auto" to "Auto",
+                            "online" to "Online",
+                            "idle" to "Idle",
+                            "dnd" to "Do Not Disturb",
+                            "invisible" to "Invisible",
+                        ),
+                        onChange = { updateDiscordSetting("discordPresenceStatus", it) },
+                    )
+                    SettingDropdown(
+                        label = "Activity type",
+                        value = settings["discordActivityType"] ?: "2",
+                        options = listOf(
+                            "0" to "Playing",
+                            "1" to "Streaming",
+                            "2" to "Listening",
+                            "3" to "Watching",
+                        ),
+                        onChange = { updateDiscordSetting("discordActivityType", it) },
+                    )
+                    SettingTextField(
+                        label = "Activity name",
+                        value = settings["discordName"] ?: DiscordRpcManager.DEFAULT_NAME,
+                        onChange = { updateDiscordSetting("discordName", it) },
+                    )
+                    SettingTextField(
+                        label = "Details",
+                        value = settings["discordDetails"] ?: DiscordRpcManager.DEFAULT_DETAILS,
+                        onChange = { updateDiscordSetting("discordDetails", it) },
+                    )
+                    SettingTextField(
+                        label = "State",
+                        value = settings["discordState"] ?: DiscordRpcManager.DEFAULT_STATE,
+                        onChange = { updateDiscordSetting("discordState", it) },
+                    )
+                    Text(
+                        "Formats: <hime.player.song.name> <hime.player.song.artist> <hime.player.song.album> <hime.player.song.info> <hime.player.status> <hime.player.song.duration> <hime.player.song.remaining>",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    val connecting = rpcStatus == "Waiting for Discord" || rpcStatus.startsWith("Connecting")
+                    Button(
+                        onClick = {
+                            if (rpcStatus == "Connected") {
+                                DiscordRpcManager.setEnabled(false)
+                                updateDiscordSetting("discordRpc", "false")
+                            } else {
+                                DiscordRpcManager.authorize(context)
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = !connecting,
+                    ) {
+                        Text(
+                            when {
+                                rpcStatus == "Connected" -> "Disconnect"
+                                connecting -> "Connecting..."
+                                rpcStatus.startsWith("Error") -> "Retry"
+                                else -> "Connect"
+                            },
+                        )
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "Status: $rpcStatus",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    DiscordPresencePreview(state, track, settings)
                 }
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    "Status: $rpcStatus",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Spacer(Modifier.height(12.dp))
-                DiscordPresencePreview(state, track, settings)
             }
         }
         item {

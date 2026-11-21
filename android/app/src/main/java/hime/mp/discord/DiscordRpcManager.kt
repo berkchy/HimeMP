@@ -29,6 +29,7 @@ import kotlin.random.Random
 object DiscordRpcManager {
     private const val GATEWAY_URL = "wss://gateway.discord.gg/?v=10&encoding=json"
     private const val ASSET_KEY = "himemp_icon"
+    const val RPC_APPROVED = false
     const val DEFAULT_NAME = "HimeMP"
     const val DEFAULT_DETAILS = "<hime.player.song.name>"
     const val DEFAULT_STATE = "<hime.player.status> • <hime.player.song.info>"
@@ -67,6 +68,10 @@ object DiscordRpcManager {
     fun init(context: Context) {
         if (::store.isInitialized) return
         store = DiscordTokenStore(context)
+        if (!RPC_APPROVED) {
+            _status.value = "Onay bekliyor"
+            return
+        }
         sessionId = store.sessionId
         sequence = store.sequence
         scope.launch {
@@ -78,7 +83,7 @@ object DiscordRpcManager {
     }
 
     fun setEnabled(enabled: Boolean) {
-        if (!::store.isInitialized) return
+        if (!RPC_APPROVED || !::store.isInitialized) return
         store.enabled = enabled
         if (!enabled) {
             disconnect(clearTokens = false)
@@ -92,6 +97,10 @@ object DiscordRpcManager {
     }
 
     fun authorize(context: Context) {
+        if (!RPC_APPROVED) {
+            _status.value = "Onay bekliyor"
+            return
+        }
         if (!::store.isInitialized || callbackJob?.isActive == true) return
         val verifier = DiscordAuth.generateVerifier()
         val state = DiscordAuth.generateVerifier()
@@ -174,7 +183,7 @@ object DiscordRpcManager {
     }
 
     fun updatePresence(state: PlaybackState, track: Track?) {
-        if (!::store.isInitialized || !store.enabled || store.accessToken.isNullOrBlank()) return
+        if (!RPC_APPROVED || !::store.isInitialized || !store.enabled || store.accessToken.isNullOrBlank()) return
         val key = "${track?.id.orEmpty()}|${state.playing}|${state.positionMs / 1000}"
         if (key == lastPresenceKey && System.currentTimeMillis() - lastPresenceAt < 1000) return
         lastPresenceKey = key
