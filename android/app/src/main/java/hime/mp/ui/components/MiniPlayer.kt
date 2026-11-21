@@ -95,12 +95,20 @@ fun MiniPlayer(onExpand: () -> Unit) {
                             else PlaybackController.next()
                         }
                         scope.launch {
-                            animate(dragX, 0f, tween(180)) { value, _ -> dragX = value }
+                            animate(
+                                initialValue = dragX,
+                                targetValue = 0f,
+                                animationSpec = tween(180),
+                            ) { value, _ -> dragX = value }
                         }
                     },
                     onDragCancel = {
                         scope.launch {
-                            animate(dragX, 0f, tween(180)) { value, _ -> dragX = value }
+                            animate(
+                                initialValue = dragX,
+                                targetValue = 0f,
+                                animationSpec = tween(180),
+                            ) { value, _ -> dragX = value }
                         }
                     },
                 )
