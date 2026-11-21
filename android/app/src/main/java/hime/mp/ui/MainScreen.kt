@@ -48,9 +48,9 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.palette.graphics.Palette
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.math.abs
 import hime.mp.core.Track
 import hime.mp.data.PlaybackController
 import hime.mp.ui.components.MiniPlayer
@@ -90,15 +90,16 @@ fun MainScreen() {
         navJob?.cancel()
         navJob = scope.launch {
             val current = pagerState.currentPage
-            val step = if (page > current) 1 else -1
-            var next = current
-            while (next != page) {
-                next += step
+            val distance = abs(page - current)
+            if (distance > 0) {
+                selectedTab = page
                 pagerState.animateScrollToPage(
-                    next,
-                    animationSpec = tween(320, easing = FastOutSlowInEasing),
+                    page,
+                    animationSpec = tween(
+                        durationMillis = (260 * distance).coerceAtLeast(320),
+                        easing = FastOutSlowInEasing,
+                    ),
                 )
-                delay(60)
             }
         }
     }
