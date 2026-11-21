@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -22,7 +23,9 @@ import hime.mp.core.Artist
 import hime.mp.core.Playlist
 import hime.mp.core.Track
 import hime.mp.data.MusicRepository
+import hime.mp.ui.components.SectionHeader
 import hime.mp.ui.components.TrackRow
+import hime.mp.ui.components.getGroupedItemShape
 import kotlinx.coroutines.delay
 
 @Composable
@@ -35,6 +38,9 @@ fun SearchScreen(
     var playlists by remember { mutableStateOf<List<Playlist>>(emptyList()) }
     var albums by remember { mutableStateOf<List<Album>>(emptyList()) }
     var artists by remember { mutableStateOf<List<Artist>>(emptyList()) }
+    val listState = rememberLazyListState()
+
+    LaunchedEffect(query) { listState.scrollToItem(0) }
 
     LaunchedEffect(query) {
         delay(180)
@@ -73,7 +79,7 @@ fun SearchScreen(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        LazyColumn(modifier = Modifier.weight(1f)) {
+        LazyColumn(modifier = Modifier.weight(1f), state = listState) {
             if (playlists.isNotEmpty()) {
                 item { SectionTitle("Playlists") }
                 items(playlists.size, key = { playlists[it].id }) { index ->
@@ -105,6 +111,7 @@ fun SearchScreen(
                         onPlay = { onPlayTracks(results, index) },
                         onFavorite = {},
                         onQueueNext = { onQueueNext(track) },
+                        shape = getGroupedItemShape(index, results.size),
                     )
                 }
             }
@@ -114,10 +121,5 @@ fun SearchScreen(
 
 @Composable
 private fun SectionTitle(title: String) {
-    Text(
-        title,
-        style = MaterialTheme.typography.titleMedium,
-        color = MaterialTheme.colorScheme.primary,
-        modifier = Modifier.padding(start = 16.dp, top = 12.dp, bottom = 4.dp),
-    )
+    SectionHeader(title)
 }

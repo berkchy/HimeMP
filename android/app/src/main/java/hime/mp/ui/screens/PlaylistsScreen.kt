@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -17,6 +18,7 @@ import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -34,9 +36,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import hime.mp.core.Track
 import hime.mp.data.MusicRepository
+import hime.mp.ui.components.CardShape
 import hime.mp.ui.components.ConfirmDialog
+import hime.mp.ui.components.SectionHeader
 import hime.mp.ui.components.TextInputDialog
 import hime.mp.ui.components.TrackRow
+import hime.mp.ui.components.getGroupedItemShape
 import hime.mp.ui.viewmodel.PlaylistsViewModel
 
 @Composable
@@ -59,61 +64,77 @@ fun PlaylistsScreen(
     var deleting by remember { mutableStateOf<Pair<String, String>?>(null) }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text("Playlists", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
-            IconButton(onClick = { creating = true }) { Icon(Icons.Default.Add, "Create playlist") }
-        }
+        SectionHeader(
+            title = "Playlists",
+            modifier = Modifier.padding(top = 8.dp),
+            action = {
+                IconButton(onClick = { creating = true }) {
+                    Icon(Icons.Default.Add, "Create playlist")
+                }
+            },
+        )
         LazyColumn(modifier = Modifier.weight(1f)) {
             item {
                 Card(
+                    shape = CardShape,
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 4.dp)
+                        .padding(horizontal = 12.dp, vertical = 4.dp)
                         .clickable { onSelect("__favorites__") },
                 ) {
                     Text("Liked songs (${favorites.size})", modifier = Modifier.padding(16.dp))
                 }
                 Card(
+                    shape = CardShape,
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 4.dp)
+                        .padding(horizontal = 12.dp, vertical = 4.dp)
                         .clickable { onSelect("__recent__") },
                 ) {
                     Text("Recently played (${recent.size})", modifier = Modifier.padding(16.dp))
                 }
                 Card(
+                    shape = CardShape,
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 4.dp)
+                        .padding(horizontal = 12.dp, vertical = 4.dp)
                         .clickable { onSelect("__recent_added__") },
                 ) {
                     Text("Recently added", modifier = Modifier.padding(16.dp))
                 }
             }
             items(playlists, key = { it.id }) { playlist ->
-                Row(
+                Card(
+                    shape = CardShape,
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable { onSelect(playlist.id) }
-                        .padding(horizontal = 16.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
+                        .padding(horizontal = 12.dp, vertical = 4.dp)
+                        .clickable { onSelect(playlist.id) },
                 ) {
-                    Column(Modifier.weight(1f)) {
-                        Text(playlist.name, style = MaterialTheme.typography.titleMedium)
-                        Text(
-                            "${playlist.trackIds.size} tracks",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                    TextButton(onClick = { renaming = playlist.id to playlist.name }) {
-                        Text("Rename")
-                    }
-                    IconButton(onClick = { deleting = playlist.id to playlist.name }) {
-                        Icon(Icons.Default.Delete, "Delete")
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text(playlist.name, style = MaterialTheme.typography.titleMedium)
+                            Text(
+                                "${playlist.trackIds.size} tracks",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        TextButton(onClick = { renaming = playlist.id to playlist.name }) {
+                            Text("Rename")
+                        }
+                        IconButton(onClick = { deleting = playlist.id to playlist.name }) {
+                            Icon(Icons.Default.Delete, "Delete")
+                        }
                     }
                 }
             }
@@ -153,7 +174,9 @@ private fun PlaylistDetailScreen(
     onQueueNext: (Track) -> Unit,
 ) {
     var tracks by remember { mutableStateOf<List<Track>>(emptyList()) }
+    val listState = rememberLazyListState()
     val playlists by viewModel.playlists.collectAsState()
+    LaunchedEffect(id) { listState.scrollToItem(0) }
     LaunchedEffect(id) {
         tracks = when (id) {
             "__favorites__" -> MusicRepository.favorites()
@@ -176,7 +199,7 @@ private fun PlaylistDetailScreen(
         Button(onClick = { if (tracks.isNotEmpty()) onPlayTracks(tracks, 0) }, modifier = Modifier.padding(horizontal = 16.dp)) {
             Text("Play all")
         }
-        LazyColumn(modifier = Modifier.weight(1f)) {
+        LazyColumn(modifier = Modifier.weight(1f), state = listState) {
             itemsIndexed(tracks, key = { _, t -> t.id }) { index, track ->
                 TrackRow(
                     track = track,
@@ -184,6 +207,7 @@ private fun PlaylistDetailScreen(
                     onPlay = { onPlayTracks(tracks, index) },
                     onFavorite = {},
                     onQueueNext = { onQueueNext(track) },
+                    shape = getGroupedItemShape(index, tracks.size),
                     trailing = {
                         if (!id.startsWith("__")) {
                             IconButton(

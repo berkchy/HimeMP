@@ -46,9 +46,12 @@ fun MiniPlayer(onExpand: () -> Unit) {
         0f
     }
     Surface(
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
         tonalElevation = 3.dp,
-        shadowElevation = 6.dp,
+        shadowElevation = 8.dp,
         modifier = Modifier
+            .padding(horizontal = 8.dp, vertical = 4.dp)
             .fillMaxWidth()
             .clickable(onClick = onExpand)
             .pointerInput(Unit) {

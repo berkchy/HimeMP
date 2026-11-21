@@ -8,6 +8,8 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.media.AudioAttributes
 import android.media.AudioFocusRequest
 import android.media.AudioManager
@@ -16,13 +18,15 @@ import android.media.session.MediaSession
 import android.os.Build
 import android.os.IBinder
 import android.util.TypedValue
-import androidx.core.app.NotificationCompat
+import android.widget.RemoteViews
+import androidx.core.content.ContextCompat
 import hime.mp.MainActivity
 import hime.mp.R
 import hime.mp.core.PlaybackState
 import hime.mp.core.Track
 import hime.mp.data.PlaybackController
 import hime.mp.util.ArtCache
+import hime.mp.util.formatDuration
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -190,8 +194,26 @@ class PlaybackService : Service() {
         }
     }
 
-    private fun buildNotification(state: PlaybackState, art: android.graphics.Bitmap?): Notification {
+    private fun bitmapFrom(resId: Int, sizeDp: Int = 24): Bitmap {
+        val drawable = ContextCompat.getDrawable(this, resId)
+            ?: return Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888)
+        val size = (sizeDp * resources.displayMetrics.density).toInt().coerceAtLeast(1)
+        val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+        drawable.setBounds(0, 0, size, size)
+        drawable.draw(canvas)
+        return bitmap
+    }
+
+    private fun buildNotification(state: PlaybackState, art: Bitmap?): Notification {
         val track: Track? = PlaybackController.currentTrack.value
+        val title = track?.title ?: getString(R.string.now_playing)
+        val artist = track?.artist.orEmpty()
+        val cover = art ?: bitmapFrom(R.drawable.ic_placeholder_album, 48)
+        val playIcon = bitmapFrom(
+            if (state.playing) R.drawable.ic_notif_pause else R.drawable.ic_notif_play,
+            24,
+        )
         val openIntent = PendingIntent.getActivity(
             this,
             0,
@@ -206,52 +228,49 @@ class PlaybackService : Service() {
             Intent(this, PlaybackService::class.java).setAction(action),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
-        fun action(icon: Int, title: String, action: String): Notification.Action =
-            Notification.Action.Builder(icon, title, serviceIntent(action)).build()
+        fun RemoteViews.bindControls() {
+            setImageViewBitmap(R.id.notif_art, cover)
+            setTextViewText(R.id.notif_title, title)
+            setTextViewText(R.id.notif_artist, artist)
+            setImageViewBitmap(R.id.notif_play, playIcon)
+            setOnClickPendingIntent(R.id.notif_root, openIntent)
+            setOnClickPendingIntent(R.id.notif_prev, serviceIntent(ACTION_PREVIOUS))
+            setOnClickPendingIntent(R.id.notif_play, serviceIntent(ACTION_TOGGLE))
+            setOnClickPendingIntent(R.id.notif_next, serviceIntent(ACTION_NEXT))
+        }
 
-        val builder = Notification.Builder(this, CHANNEL_ID)
-            .setContentTitle(track?.title ?: getString(R.string.now_playing))
-            .setContentText(track?.artist.orEmpty())
+        val compact = RemoteViews(packageName, R.layout.notification_player_compact).apply {
+            bindControls()
+        }
+        val expanded = RemoteViews(packageName, R.layout.notification_player).apply {
+            bindControls()
+            val max = 1000
+            val progress = if (state.durationMs > 0) {
+                (state.positionMs.toFloat() / state.durationMs * max).toInt().coerceIn(0, max)
+            } else {
+                0
+            }
+            setProgressBar(R.id.notif_progress, max, progress, false)
+            setTextViewText(R.id.notif_position, formatDuration(state.positionMs))
+            setTextViewText(R.id.notif_duration, formatDuration(state.durationMs))
+            setOnClickPendingIntent(R.id.notif_close, serviceIntent(ACTION_STOP))
+        }
+
+        return Notification.Builder(this, CHANNEL_ID)
+            .setContentTitle(title)
+            .setContentText(artist)
             .setSubText(track?.album)
             .setSmallIcon(R.drawable.ic_stat_music)
-            .setLargeIcon(art)
             .setContentIntent(openIntent)
             .setDeleteIntent(serviceIntent(ACTION_STOP))
             .setOngoing(state.playing)
             .setOnlyAlertOnce(true)
             .setVisibility(Notification.VISIBILITY_PUBLIC)
-            .setProgress(
-                state.durationMs.toInt().coerceAtLeast(1),
-                state.positionMs.coerceIn(0, state.durationMs).toInt(),
-                false,
-            )
             .setColor(resolveAccent())
-            .addAction(
-                action(
-                    android.R.drawable.ic_media_previous,
-                    "Previous",
-                    ACTION_PREVIOUS,
-                ),
-            )
-            .addAction(
-                action(
-                    if (state.playing) android.R.drawable.ic_media_pause
-                    else android.R.drawable.ic_media_play,
-                    if (state.playing) "Pause" else "Play",
-                    ACTION_TOGGLE,
-                ),
-            )
-            .addAction(action(android.R.drawable.ic_media_next, "Next", ACTION_NEXT))
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            builder.setStyle(
-                Notification.MediaStyle()
-                    .setMediaSession(session.sessionToken)
-                    .setShowActionsInCompactView(0, 1, 2),
-            )
-            builder.setColorized(true)
-        }
-        return builder.build()
+            .setCustomContentView(compact)
+            .setCustomBigContentView(expanded)
+            .setCustomHeadsUpContentView(compact)
+            .build()
     }
 
     private fun resolveAccent(): Int {

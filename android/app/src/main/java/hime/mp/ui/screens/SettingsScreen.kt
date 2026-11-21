@@ -30,6 +30,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import hime.mp.ui.components.SectionHeader
 import hime.mp.util.Permissions
 import hime.mp.util.formatBytes
 import hime.mp.util.formatDuration
@@ -144,12 +145,7 @@ fun SettingsScreen(viewModel: SettingsViewModel) {
 
 @Composable
 private fun Section(title: String) {
-    Text(
-        title,
-        modifier = Modifier.padding(start = 16.dp, top = 20.dp, bottom = 8.dp),
-        style = MaterialTheme.typography.titleMedium,
-        color = MaterialTheme.colorScheme.primary,
-    )
+    SectionHeader(title, modifier = Modifier.padding(top = 16.dp))
 }
 
 @Composable

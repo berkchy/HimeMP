@@ -8,12 +8,12 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -21,6 +21,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -34,8 +35,11 @@ import hime.mp.core.Track
 import hime.mp.data.MusicRepository
 import hime.mp.data.PlaybackController
 import hime.mp.ui.components.ConfirmDialog
+import hime.mp.ui.components.PillButton
+import hime.mp.ui.components.SectionHeader
 import hime.mp.ui.components.TextInputDialog
 import hime.mp.ui.components.TrackRow
+import hime.mp.ui.components.getGroupedItemShape
 import hime.mp.ui.viewmodel.LibraryViewModel
 import kotlinx.coroutines.launch
 
@@ -55,9 +59,12 @@ fun LibraryScreen(
     var playlistNames by remember { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
 
     val scope = rememberCoroutineScope()
+    val listState = rememberLazyListState()
     val tracks by viewModel.tracks.collectAsState()
     val playerState by PlaybackController.state.collectAsState()
     val selectionMode = selected.isNotEmpty()
+
+    LaunchedEffect(sort) { listState.scrollToItem(0) }
 
     val sortedTracks = remember(tracks, sort) {
         when (sorts[sort]) {
@@ -119,27 +126,18 @@ fun LibraryScreen(
                     }
                 }
             } else {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        "Tracks",
-                        style = MaterialTheme.typography.headlineSmall,
-                        modifier = Modifier.weight(1f),
-                    )
-                    FilterChip(
-                        selected = false,
-                        onClick = { sort = (sort + 1) % sorts.size },
-                        label = { Text("Sort: ${sorts[sort]}") },
-                    )
-                }
+                SectionHeader(
+                    title = "Tracks",
+                    action = {
+                        PillButton(text = "Sort: ${sorts[sort]}") {
+                            sort = (sort + 1) % sorts.size
+                        }
+                    },
+                )
             }
         }
 
-        LazyColumn(modifier = Modifier.weight(1f)) {
+        LazyColumn(modifier = Modifier.weight(1f), state = listState) {
             itemsIndexed(sortedTracks, key = { _, track -> track.id }) { index, track ->
                 TrackRow(
                     track = track,
@@ -166,6 +164,7 @@ fun LibraryScreen(
                         null
                     },
                     selected = track.id in selected,
+                    shape = getGroupedItemShape(index, sortedTracks.size),
                     onLongClick = { selected = selected + track.id },
                 )
             }

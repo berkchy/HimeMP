@@ -7,6 +7,8 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -19,6 +21,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Favorite
@@ -59,6 +62,7 @@ import hime.mp.core.Track
 import hime.mp.data.MusicRepository
 import hime.mp.data.PlaybackController
 import hime.mp.ui.components.AlbumArt
+import hime.mp.ui.components.PillButton
 import hime.mp.ui.theme.LocalHimeMotion
 import hime.mp.util.formatDuration
 import kotlinx.coroutines.delay
@@ -93,59 +97,94 @@ fun FullPlayerScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
+            .background(MaterialTheme.colorScheme.surfaceContainerLowest)
             .padding(horizontal = 16.dp),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onClose) {
-                Icon(Icons.Default.ArrowDropDown, contentDescription = "Collapse player")
-            }
-            Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("Now playing", style = MaterialTheme.typography.labelLarge)
-                Text(track?.album.orEmpty(), style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            IconButton(onClick = { showQueue = true }) {
-                Icon(Icons.Default.List, contentDescription = "Queue")
-            }
-        }
-
-        AlbumArt(
-            track,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 24.dp, vertical = 12.dp)
-                .aspectRatio(1f),
-            corner = 28.dp,
-        )
-
-        Spacer(Modifier.height(8.dp))
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text(
-                    track?.title.orEmpty(),
-                    style = MaterialTheme.typography.headlineSmall,
-                    textAlign = TextAlign.Start,
-                    maxLines = 1,
+        Column(
+            modifier = Modifier.pointerInput(Unit) {
+                var totalDrag = 0f
+                detectVerticalDragGestures(
+                    onDragStart = { totalDrag = 0f },
+                    onVerticalDrag = { change, amount ->
+                        totalDrag += amount
+                        change.consume()
+                    },
+                    onDragEnd = { if (totalDrag > 120f) onClose() },
+                    onDragCancel = {},
                 )
-                Text(
-                    track?.artist.orEmpty(),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+            },
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onClose) {
+                    Icon(Icons.Default.ArrowDropDown, contentDescription = "Collapse player")
+                }
+                Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("Now playing", style = MaterialTheme.typography.labelLarge)
+                    Text(
+                        track?.album.orEmpty(),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                IconButton(onClick = { showQueue = true }) {
+                    Icon(Icons.Default.List, contentDescription = "Queue")
+                }
             }
-            val favoriteScale by animateFloatAsState(
-                targetValue = if (track?.favorite == true) 1.15f else 1f,
-                label = "favoriteScale",
+
+            AlbumArt(
+                track,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp, vertical = 12.dp)
+                    .aspectRatio(1f)
+                    .pointerInput(Unit) {
+                        var totalDrag = 0f
+                        detectHorizontalDragGestures(
+                            onDragStart = { totalDrag = 0f },
+                            onHorizontalDrag = { change, amount ->
+                                totalDrag += amount
+                                change.consume()
+                            },
+                            onDragEnd = {
+                                if (abs(totalDrag) > 80f) {
+                                    if (totalDrag > 0) PlaybackController.previous()
+                                    else PlaybackController.next()
+                                }
+                            },
+                            onDragCancel = {},
+                        )
+                    },
+                corner = 28.dp,
             )
-            IconButton(onClick = { track?.let(onToggleFavorite) }) {
-                Icon(
-                    if (track?.favorite == true) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                    contentDescription = "Favorite",
-                    modifier = Modifier.scale(favoriteScale),
-                    tint = if (track?.favorite == true) MaterialTheme.colorScheme.primary
-                    else MaterialTheme.colorScheme.onSurfaceVariant,
+
+            Spacer(Modifier.height(8.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        track?.title.orEmpty(),
+                        style = MaterialTheme.typography.headlineSmall,
+                        textAlign = TextAlign.Start,
+                        maxLines = 1,
+                    )
+                    Text(
+                        track?.artist.orEmpty(),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                val favoriteScale by animateFloatAsState(
+                    targetValue = if (track?.favorite == true) 1.15f else 1f,
+                    label = "favoriteScale",
                 )
+                IconButton(onClick = { track?.let(onToggleFavorite) }) {
+                    Icon(
+                        if (track?.favorite == true) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                        contentDescription = "Favorite",
+                        modifier = Modifier.scale(favoriteScale),
+                        tint = if (track?.favorite == true) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
         }
 
@@ -218,10 +257,10 @@ fun FullPlayerScreen(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceEvenly,
         ) {
-            TextButton(onClick = { showSleep = true }) { Text("Sleep") }
-            TextButton(onClick = { showSpeed = true }) { Text("${state.speed}x") }
-            TextButton(onClick = { track?.let(onAddToPlaylist) }) { Text("Playlist") }
-            TextButton(onClick = { PlaybackController.queueClear() }) { Text("Clear queue") }
+            PillButton(text = "Sleep") { showSleep = true }
+            PillButton(text = "${state.speed}x") { showSpeed = true }
+            PillButton(text = "Playlist") { track?.let(onAddToPlaylist) }
+            PillButton(text = "Clear queue") { PlaybackController.queueClear() }
         }
     }
 
@@ -277,13 +316,19 @@ fun FullPlayerScreen(
 @Composable
 private fun QueueSheet(state: PlaybackState) {
     var tracks by remember { mutableStateOf<List<Track>>(emptyList()) }
+    val listState = rememberLazyListState()
     LaunchedEffect(state.queue) {
         delay(60)
         tracks = state.queue.mapNotNull { runCatching { MusicRepository.track(it) }.getOrNull() }
     }
+    LaunchedEffect(state.index, tracks) {
+        if (state.index in tracks.indices) {
+            runCatching { listState.animateScrollToItem(state.index) }
+        }
+    }
     Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
         Text("Up next", style = MaterialTheme.typography.titleLarge)
-        LazyColumn(modifier = Modifier.fillMaxWidth().height(420.dp)) {
+        LazyColumn(modifier = Modifier.fillMaxWidth().height(420.dp), state = listState) {
             itemsIndexed(tracks, key = { _, t -> t.id }) { index, track ->
                 var dragged by remember { mutableStateOf(false) }
                 Row(

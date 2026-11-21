@@ -36,8 +36,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.palette.graphics.Palette
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import hime.mp.core.Track
 import hime.mp.data.PlaybackController
 import hime.mp.ui.components.MiniPlayer
@@ -47,10 +51,12 @@ import hime.mp.ui.screens.LibraryScreen
 import hime.mp.ui.screens.PlaylistsScreen
 import hime.mp.ui.screens.SearchScreen
 import hime.mp.ui.screens.SettingsScreen
+import hime.mp.ui.theme.AlbumThemeController
 import hime.mp.ui.theme.HimeTheme
 import hime.mp.ui.viewmodel.LibraryViewModel
 import hime.mp.ui.viewmodel.PlaylistsViewModel
 import hime.mp.ui.viewmodel.SettingsViewModel
+import hime.mp.util.ArtCache
 import hime.mp.util.Permissions
 
 @Composable
@@ -69,7 +75,22 @@ fun MainScreen() {
     val settingsMap by settings.settings.collectAsState()
     val playlistState by playlists.playlists.collectAsState()
     val playerState by PlaybackController.state.collectAsState()
+    val currentTrack by PlaybackController.currentTrack.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
+
+    LaunchedEffect(currentTrack?.id) {
+        val bitmap = withContext(Dispatchers.IO) {
+            currentTrack?.let { ArtCache.loadBlocking(it) }
+        }
+        if (bitmap == null) {
+            AlbumThemeController.clear()
+            return@LaunchedEffect
+        }
+        val extracted = withContext(Dispatchers.Default) {
+            Palette.from(bitmap).maximumColorCount(16).generate()
+        }
+        AlbumThemeController.update(extracted)
+    }
 
     LaunchedEffect(Unit) {
         PlaybackController.messages.collect { message ->
@@ -108,8 +129,13 @@ fun MainScreen() {
             snackbarHost = { SnackbarHost(snackbarHostState) { data -> Snackbar(data) } },
             bottomBar = {
                 Column {
-                    MiniPlayer(onExpand = { fullPlayer = true })
-                    NavigationBar {
+                    if (!fullPlayer) {
+                        MiniPlayer(onExpand = { fullPlayer = true })
+                    }
+                    NavigationBar(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                        tonalElevation = 3.dp,
+                    ) {
                         val items = listOf(
                             "library" to Icons.Default.Home,
                             "search" to Icons.Default.Search,
@@ -120,6 +146,7 @@ fun MainScreen() {
                             NavigationBarItem(
                                 selected = destination == route,
                                 onClick = {
+                                    fullPlayer = false
                                     destination = route
                                     if (route == "playlists") {
                                         playlists.refresh()

@@ -9,8 +9,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 object ArtCache {
-    private val maxKb = (Runtime.getRuntime().maxMemory() / 1024 / 8).toInt().coerceAtLeast(4096)
-    private val cache = object : LruCache<String, Bitmap>(maxKb) {
+    private const val MaxArtDimension = 512
+    private const val MaxCacheKb = 24 * 1024
+
+    private val cache = object : LruCache<String, Bitmap>(MaxCacheKb) {
         override fun sizeOf(key: String, value: Bitmap): Int = value.byteCount / 1024
     }
 
@@ -22,7 +24,21 @@ object ArtCache {
         return try {
             retriever.setDataSource(track.path)
             val bytes = retriever.embeddedPicture ?: return null
-            val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+            var sample = 1
+            while (maxOf(bounds.outWidth, bounds.outHeight) / sample > MaxArtDimension) {
+                sample *= 2
+            }
+            val bitmap = BitmapFactory.decodeByteArray(
+                bytes,
+                0,
+                bytes.size,
+                BitmapFactory.Options().apply {
+                    inSampleSize = sample
+                    inPreferredConfig = Bitmap.Config.RGB_565
+                },
+            )
             if (bitmap != null) cache.put(track.id, bitmap)
             bitmap
         } catch (_: Exception) {
