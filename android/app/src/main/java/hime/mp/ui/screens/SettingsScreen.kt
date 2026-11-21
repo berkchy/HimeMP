@@ -3,6 +3,8 @@ package hime.mp.ui.screens
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
@@ -11,9 +13,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.BrightnessAuto
@@ -24,11 +28,14 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Update
 import androidx.compose.material.icons.filled.WbSunny
 import androidx.compose.material3.Button
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -41,9 +48,19 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import hime.mp.R
+import hime.mp.core.PlaybackState
+import hime.mp.core.Track
+import hime.mp.data.PlaybackController
 import hime.mp.discord.DiscordRpcManager
 import hime.mp.ui.components.CardShape
 import hime.mp.ui.components.SectionHeader
@@ -59,6 +76,11 @@ fun SettingsScreen(viewModel: SettingsViewModel) {
     val settings by viewModel.settings.collectAsState()
     val stats by viewModel.stats.collectAsState()
     var notice by remember { mutableStateOf<String?>(null) }
+
+    fun updateDiscordSetting(key: String, value: String) {
+        viewModel.setSetting(key, value)
+        DiscordRpcManager.updateOptions(settings + (key to value))
+    }
 
     val folderPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri: Uri? ->
         if (uri != null) {
@@ -180,25 +202,82 @@ fun SettingsScreen(viewModel: SettingsViewModel) {
             Section("Discord Rich Presence")
             SettingsCard {
                 val rpcStatus by DiscordRpcManager.status.collectAsState()
+                val state by PlaybackController.state.collectAsState()
+                val track by PlaybackController.currentTrack.collectAsState()
                 SettingSwitch(
                     label = "Enable Rich Presence",
                     checked = settings["discordRpc"]?.toBoolean() ?: false,
                     onChange = {
-                        viewModel.setSetting("discordRpc", it.toString())
+                        updateDiscordSetting("discordRpc", it.toString())
                         DiscordRpcManager.setEnabled(it)
                     },
                 )
                 Spacer(Modifier.height(8.dp))
-                Row(
+                SettingDropdown(
+                    label = "Presence status",
+                    value = settings["discordPresenceStatus"] ?: "auto",
+                    options = listOf(
+                        "auto" to "Auto",
+                        "online" to "Online",
+                        "idle" to "Idle",
+                        "dnd" to "Do Not Disturb",
+                        "invisible" to "Invisible",
+                    ),
+                    onChange = { updateDiscordSetting("discordPresenceStatus", it) },
+                )
+                SettingDropdown(
+                    label = "Activity type",
+                    value = settings["discordActivityType"] ?: "2",
+                    options = listOf(
+                        "0" to "Playing",
+                        "1" to "Streaming",
+                        "2" to "Listening",
+                        "3" to "Watching",
+                    ),
+                    onChange = { updateDiscordSetting("discordActivityType", it) },
+                )
+                SettingTextField(
+                    label = "Activity name",
+                    value = settings["discordName"] ?: DiscordRpcManager.DEFAULT_NAME,
+                    onChange = { updateDiscordSetting("discordName", it) },
+                )
+                SettingTextField(
+                    label = "Details",
+                    value = settings["discordDetails"] ?: DiscordRpcManager.DEFAULT_DETAILS,
+                    onChange = { updateDiscordSetting("discordDetails", it) },
+                )
+                SettingTextField(
+                    label = "State",
+                    value = settings["discordState"] ?: DiscordRpcManager.DEFAULT_STATE,
+                    onChange = { updateDiscordSetting("discordState", it) },
+                )
+                Text(
+                    "Placeholders: {title} {artist} {album} {info} {status} {position} {duration} {remaining}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(8.dp))
+                val connecting = rpcStatus == "Waiting for Discord" || rpcStatus.startsWith("Connecting")
+                Button(
+                    onClick = {
+                        if (rpcStatus == "Connected") {
+                            DiscordRpcManager.setEnabled(false)
+                            updateDiscordSetting("discordRpc", "false")
+                        } else {
+                            DiscordRpcManager.authorize(context)
+                        }
+                    },
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = androidx.compose.foundation.layout.Arrangement.SpaceEvenly,
+                    enabled = !connecting,
                 ) {
-                    Button(onClick = { DiscordRpcManager.authorize(context) }) {
-                        Text(if (rpcStatus == "Connected") "Reconnect" else "Connect")
-                    }
-                    OutlinedButton(onClick = { DiscordRpcManager.logout() }) {
-                        Text("Logout")
-                    }
+                    Text(
+                        when {
+                            rpcStatus == "Connected" -> "Disconnect"
+                            connecting -> "Connecting..."
+                            rpcStatus.startsWith("Error") -> "Retry"
+                            else -> "Connect"
+                        },
+                    )
                 }
                 Spacer(Modifier.height(8.dp))
                 Text(
@@ -206,11 +285,8 @@ fun SettingsScreen(viewModel: SettingsViewModel) {
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                Text(
-                    "Upload an art asset named himemp_icon in the Discord portal to show the app logo.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                Spacer(Modifier.height(12.dp))
+                DiscordPresencePreview(state, track, settings)
             }
         }
         item {
@@ -275,5 +351,136 @@ private fun SettingSwitch(label: String, checked: Boolean, onChange: (Boolean) -
     ) {
         Text(label, modifier = Modifier.weight(1f))
         Switch(checked = checked, onCheckedChange = onChange)
+    }
+}
+
+@Composable
+private fun SettingDropdown(
+    label: String,
+    value: String,
+    options: List<Pair<String, String>>,
+    onChange: (String) -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val current = options.firstOrNull { it.first == value }?.second ?: value
+    Box(modifier = Modifier.fillMaxWidth()) {
+        OutlinedButton(
+            onClick = { expanded = true },
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text("$label: $current", modifier = Modifier.weight(1f))
+        }
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            options.forEach { (key, text) ->
+                DropdownMenuItem(
+                    text = { Text(text) },
+                    onClick = {
+                        onChange(key)
+                        expanded = false
+                    },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SettingTextField(label: String, value: String, onChange: (String) -> Unit) {
+    var text by remember(value) { mutableStateOf(value) }
+    OutlinedTextField(
+        value = text,
+        onValueChange = {
+            text = it
+            onChange(it)
+        },
+        label = { Text(label) },
+        modifier = Modifier.fillMaxWidth(),
+        singleLine = true,
+    )
+}
+
+@Composable
+private fun DiscordPresencePreview(
+    state: PlaybackState,
+    track: Track?,
+    settings: Map<String, String>,
+) {
+    val name = settings["discordName"]?.takeIf { it.isNotBlank() } ?: DiscordRpcManager.DEFAULT_NAME
+    val typeLabel = when (settings["discordActivityType"]?.toIntOrNull() ?: 2) {
+        0 -> "PLAYING"
+        1 -> "STREAMING"
+        3 -> "WATCHING"
+        else -> "LISTENING"
+    }
+    val details = DiscordRpcManager.renderTemplate(
+        settings["discordDetails"] ?: DiscordRpcManager.DEFAULT_DETAILS,
+        state,
+        track,
+    )
+    val stateText = DiscordRpcManager.renderTemplate(
+        settings["discordState"] ?: DiscordRpcManager.DEFAULT_STATE,
+        state,
+        track,
+    )
+    val timing = if (state.playing && state.durationMs > 0 && track != null) {
+        "${formatDuration((state.durationMs - state.positionMs).coerceAtLeast(0))} left"
+    } else {
+        ""
+    }
+    Text("Preview", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Spacer(Modifier.height(6.dp))
+    Surface(
+        shape = RoundedCornerShape(8.dp),
+        color = Color(0xFF313338),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(
+            modifier = Modifier.padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Image(
+                painter = painterResource(R.mipmap.ic_launcher),
+                contentDescription = null,
+                modifier = Modifier
+                    .size(76.dp)
+                    .clip(RoundedCornerShape(4.dp)),
+                contentScale = ContentScale.Crop,
+            )
+            Spacer(Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    "$typeLabel $name",
+                    color = Color(0xFF949BA4),
+                    style = MaterialTheme.typography.labelSmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    if (track == null) "No track playing" else details.ifBlank { "Unknown track" },
+                    color = Color(0xFFF2F3F5),
+                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    stateText,
+                    color = Color(0xFFB5BAC1),
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                if (timing.isNotBlank()) {
+                    Text(
+                        timing,
+                        color = Color(0xFFB5BAC1),
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            }
+        }
     }
 }

@@ -5,6 +5,8 @@ import android.content.Intent
 import android.net.Uri
 import hime.mp.core.PlaybackState
 import hime.mp.core.Track
+import hime.mp.data.MusicRepository
+import hime.mp.util.formatDuration
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -26,6 +28,9 @@ import kotlin.random.Random
 object DiscordRpcManager {
     private const val GATEWAY_URL = "wss://gateway.discord.gg/?v=10&encoding=json"
     private const val ASSET_KEY = "himemp_icon"
+    const val DEFAULT_NAME = "HimeMP"
+    const val DEFAULT_DETAILS = "{title}"
+    const val DEFAULT_STATE = "{status} • {info}"
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val http = OkHttpClient.Builder()
@@ -45,6 +50,11 @@ object DiscordRpcManager {
     private var activityStartMs = 0L
     private var reconnectAttempts = 0
     private var pendingResume = false
+    private var activityName = DEFAULT_NAME
+    private var detailsTemplate = DEFAULT_DETAILS
+    private var stateTemplate = DEFAULT_STATE
+    private var activityType = 2
+    private var presenceStatus = "auto"
     private var lastPresenceKey = ""
     private var lastPresenceAt = 0L
 
@@ -56,6 +66,9 @@ object DiscordRpcManager {
         store = DiscordTokenStore(context)
         sessionId = store.sessionId
         sequence = store.sequence
+        scope.launch {
+            runCatching { MusicRepository.settings() }.onSuccess { applyOptions(it) }
+        }
         if (store.enabled && !store.accessToken.isNullOrBlank()) {
             scope.launch { connect(resume = false) }
         }
@@ -69,6 +82,10 @@ object DiscordRpcManager {
         } else if (!store.accessToken.isNullOrBlank()) {
             scope.launch { connect(resume = false) }
         }
+    }
+
+    fun updateOptions(settings: Map<String, String>) {
+        scope.launch { applyOptions(settings) }
     }
 
     fun authorize(context: Context) {
@@ -216,36 +233,67 @@ object DiscordRpcManager {
         )
     }
 
+    private fun applyOptions(settings: Map<String, String>) {
+        activityName = settings["discordName"]?.takeIf { it.isNotBlank() } ?: DEFAULT_NAME
+        detailsTemplate = settings["discordDetails"] ?: DEFAULT_DETAILS
+        stateTemplate = settings["discordState"] ?: DEFAULT_STATE
+        activityType = settings["discordActivityType"]?.toIntOrNull()?.takeIf { it in 0..3 } ?: 2
+        presenceStatus = settings["discordPresenceStatus"] ?: "auto"
+        if (currentActivity != null) sendPresence()
+    }
+
+    fun renderTemplate(template: String, state: PlaybackState, track: Track?): String {
+        val info = listOfNotNull(
+            track?.artist?.takeIf { it.isNotBlank() },
+            track?.album?.takeIf { it.isNotBlank() },
+        ).joinToString(" • ")
+        val status = if (state.playing) "" else "Paused"
+        val remaining = (state.durationMs - state.positionMs).coerceAtLeast(0)
+        return template
+            .replace("{title}", track?.title?.takeIf { it.isNotBlank() } ?: "Unknown track")
+            .replace("{artist}", track?.artist.orEmpty())
+            .replace("{album}", track?.album.orEmpty())
+            .replace("{info}", info)
+            .replace("{status}", status)
+            .replace("{position}", formatDuration(state.positionMs.coerceAtLeast(0)))
+            .replace("{duration}", formatDuration(state.durationMs.coerceAtLeast(0)))
+            .replace("{remaining}", formatDuration(remaining))
+            .trim()
+            .trim('•')
+            .trim()
+            .take(128)
+    }
+
     private fun presenceObject(): JSONObject {
         val activities = JSONArray()
         currentActivity?.let { activities.put(it) }
+        val status = if (presenceStatus == "auto") {
+            if (currentPlaying) "online" else "idle"
+        } else {
+            presenceStatus
+        }
         return JSONObject()
             .put("since", if (currentPlaying && activityStartMs > 0) activityStartMs else JSONObject.NULL)
             .put("activities", activities)
-            .put("status", if (currentPlaying) "online" else "idle")
+            .put("status", status)
             .put("afk", false)
     }
 
     private fun buildActivity(state: PlaybackState, track: Track?): JSONObject? {
         if (track == null) return null
-        val info = listOfNotNull(
-            track.artist.takeIf { it.isNotBlank() },
-            track.album.takeIf { it.isNotBlank() },
-        ).joinToString(" • ").take(128)
+        val name = activityName.take(128).ifBlank { DEFAULT_NAME }
+        val details = renderTemplate(detailsTemplate, state, track).ifBlank { "Unknown track" }
+        val stateText = renderTemplate(stateTemplate, state, track)
         val activity = JSONObject()
-            .put("name", "HimeMP")
-            .put("type", 2)
-            .put("details", track.title.take(128).ifBlank { "Unknown track" })
-            .put(
-                "state",
-                if (state.playing) info
-                else "Paused${if (info.isBlank()) "" else " • $info"}".take(128),
-            )
+            .put("name", name)
+            .put("type", activityType)
+            .put("details", details)
+            .put("state", stateText)
             .put(
                 "assets",
                 JSONObject()
                     .put("large_image", ASSET_KEY)
-                    .put("large_text", "HimeMP"),
+                    .put("large_text", name),
             )
         if (state.playing && state.durationMs > 0) {
             val start = System.currentTimeMillis() - state.positionMs
