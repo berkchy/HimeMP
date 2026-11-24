@@ -38,14 +38,14 @@ fun parseTtml(input: String): List<LyricLine> {
     parser.setInput(java.io.StringReader(input))
     var event = parser.eventType
     while (event != org.xmlpull.v1.XmlPullParser.END_DOCUMENT) {
-        if (event == org.xmlpull.v1.XmlPullParser.START_TAG && parser.localName.equals("p", ignoreCase = true)) {
+        if (event == org.xmlpull.v1.XmlPullParser.START_TAG && parser.name.equals("p", ignoreCase = true)) {
             val timeMs = parseTtmlTime(parser.getAttributeValue(null, "begin"))
             val text = StringBuilder()
             while (true) {
                 when (parser.next()) {
                     org.xmlpull.v1.XmlPullParser.TEXT -> text.append(parser.text)
                     org.xmlpull.v1.XmlPullParser.END_TAG -> {
-                        if (parser.localName.equals("p", ignoreCase = true)) break
+                        if (parser.name.equals("p", ignoreCase = true)) break
                     }
                     org.xmlpull.v1.XmlPullParser.END_DOCUMENT -> break
                 }

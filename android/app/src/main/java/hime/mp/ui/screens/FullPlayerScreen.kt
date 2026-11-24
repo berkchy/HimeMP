@@ -280,7 +280,7 @@ fun FullPlayerScreen(
 
         if (showLyrics) {
             Spacer(Modifier.height(8.dp))
-            LyricsPanel(lyrics, lyricsLoading, shownPosition)
+            LyricsPanel(lyrics, lyricsLoading, shownPosition, Modifier.fillMaxWidth().weight(1f))
         } else {
             Spacer(Modifier.weight(1f))
         }
@@ -416,16 +416,16 @@ private fun ModernSeekBar(
 }
 
 @Composable
-private fun LyricsPanel(data: LyricsData?, loading: Boolean, positionMs: Long) {
+private fun LyricsPanel(data: LyricsData?, loading: Boolean, positionMs: Long, modifier: Modifier = Modifier) {
     val listState = rememberLazyListState()
     if (loading) {
-        Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+        Box(modifier, contentAlignment = Alignment.Center) {
             CircularProgressIndicator()
         }
         return
     }
     if (data == null || data.lines.isEmpty()) {
-        Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+        Box(modifier, contentAlignment = Alignment.Center) {
             Text(
                 "Lyrics not found",
                 style = MaterialTheme.typography.bodyMedium,
@@ -439,7 +439,7 @@ private fun LyricsPanel(data: LyricsData?, loading: Boolean, positionMs: Long) {
         runCatching { listState.animateScrollToItem(active, -120) }
     }
     LazyColumn(
-        modifier = Modifier.fillMaxWidth().weight(1f),
+        modifier = modifier,
         state = listState,
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
