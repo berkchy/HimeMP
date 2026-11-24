@@ -4,38 +4,49 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.BrightnessAuto
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.ModeNight
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Update
 import androidx.compose.material.icons.filled.WbSunny
-import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilledTonalIconButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -61,8 +72,6 @@ import hime.mp.core.PlaybackState
 import hime.mp.core.Track
 import hime.mp.data.PlaybackController
 import hime.mp.discord.DiscordRpcManager
-import hime.mp.ui.components.CardShape
-import hime.mp.ui.components.SectionHeader
 import hime.mp.ui.viewmodel.SettingsViewModel
 import hime.mp.util.Permissions
 import hime.mp.util.formatBytes
@@ -92,85 +101,97 @@ fun SettingsScreen(viewModel: SettingsViewModel) {
         viewModel.notice.collect { notice = it }
     }
 
-    LazyColumn(modifier = Modifier.fillMaxSize()) {
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(bottom = 32.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
         item {
-            Section("Library & storage")
-            SettingsCard {
+            SettingsSection("Library & storage") {
                 folders.forEach { folder ->
-                    Surface(
-                        shape = MaterialTheme.shapes.small,
-                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 3.dp),
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Icon(
-                                Icons.Default.Folder,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(20.dp),
-                            )
-                            Text(
-                                folder,
-                                modifier = Modifier.weight(1f).padding(start = 12.dp),
-                                style = MaterialTheme.typography.bodyMedium,
-                                maxLines = 1,
-                            )
+                    SettingsRow(
+                        title = folder,
+                        description = "Music library folder",
+                        leadingIcon = Icons.Default.Folder,
+                        trailing = {
                             FilledTonalIconButton(
                                 onClick = { viewModel.removeFolder(folder) },
                                 modifier = Modifier.size(40.dp),
                             ) {
                                 Icon(Icons.Default.Delete, "Remove folder", modifier = Modifier.size(18.dp))
                             }
+                        },
+                    )
+                    SettingsDivider()
+                }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    SettingsActionButton(Icons.Default.Add, "Add") { folderPicker.launch(null) }
+                    SettingsActionButton(Icons.Default.Refresh, "Quick") { viewModel.rescan(incremental = true) }
+                    SettingsActionButton(Icons.Default.Update, "Full") { viewModel.rescan(incremental = false) }
+                    SettingsActionButton(Icons.Default.Delete, "Cache") { viewModel.clearCache() }
+                }
+                SettingsDivider()
+                Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+                    Text(
+                        "Library stats",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "${stats.tracks} tracks • ${stats.albums} albums • ${stats.artists} artists • ${stats.playlists} playlists",
+                        style = MaterialTheme.typography.bodyLarge,
+                    )
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        "${formatBytes(stats.totalBytes)} • ${formatDuration(stats.totalDurationMs)}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+
+        item {
+            SettingsSection("Appearance & motion") {
+                Row(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+                    val theme = settings["theme"] ?: "system"
+                    val themes = listOf(
+                        Triple("system", "System", Icons.Default.BrightnessAuto),
+                        Triple("light", "Light", Icons.Default.WbSunny),
+                        Triple("dark", "Dark", Icons.Default.ModeNight),
+                    )
+                    SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                        themes.forEachIndexed { index, (key, label, icon) ->
+                            SegmentedButton(
+                                selected = theme == key,
+                                onClick = { viewModel.setSetting("theme", key) },
+                                shape = SegmentedButtonDefaults.itemShape(index, themes.size),
+                                icon = {
+                                    Icon(
+                                        icon,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp),
+                                    )
+                                },
+                                label = {
+                                    Text(
+                                        label,
+                                        style = MaterialTheme.typography.labelMedium,
+                                        maxLines = 1,
+                                    )
+                                },
+                            )
                         }
                     }
                 }
-                Spacer(Modifier.height(12.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = androidx.compose.foundation.layout.Arrangement.SpaceEvenly,
-                ) {
-                    SettingIconButton(Icons.Default.Add, "Add") { folderPicker.launch(null) }
-                    SettingIconButton(Icons.Default.Refresh, "Quick") { viewModel.rescan(incremental = true) }
-                    SettingIconButton(Icons.Default.Update, "Full") { viewModel.rescan(incremental = false) }
-                    SettingIconButton(Icons.Default.Delete, "Cache") { viewModel.clearCache() }
-                }
-                Spacer(Modifier.height(12.dp))
-                Text(
-                    "${stats.tracks} tracks • ${stats.albums} albums • ${stats.artists} artists • ${stats.playlists} playlists",
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-                Text(
-                    "${formatBytes(stats.totalBytes)} • ${formatDuration(stats.totalDurationMs)}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
-        item {
-            Section("Appearance & motion")
-            SettingsCard {
-                val theme = settings["theme"] ?: "system"
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = androidx.compose.foundation.layout.Arrangement.SpaceEvenly,
-                ) {
-                    SettingIconButton(Icons.Default.BrightnessAuto, "System", theme == "system") {
-                        viewModel.setSetting("theme", "system")
-                    }
-                    SettingIconButton(Icons.Default.WbSunny, "Light", theme == "light") {
-                        viewModel.setSetting("theme", "light")
-                    }
-                    SettingIconButton(Icons.Default.ModeNight, "Dark", theme == "dark") {
-                        viewModel.setSetting("theme", "dark")
-                    }
-                }
-                Spacer(Modifier.height(12.dp))
-                SettingDropdown(
+                SettingsDivider()
+                SettingsDropdownRow(
                     label = "Color source",
                     value = settings["colorSource"] ?: "adaptive",
                     options = listOf(
@@ -179,19 +200,27 @@ fun SettingsScreen(viewModel: SettingsViewModel) {
                         "system" to "System",
                         "classic" to "Classic",
                     ),
+                    leadingIcon = Icons.Default.AutoAwesome,
                     onChange = { viewModel.setSetting("colorSource", it) },
                 )
-                SettingSwitch(
+                SettingsDivider()
+                SettingsSwitchRow(
                     label = "Dynamic color",
+                    description = "Use wallpaper-derived colors",
+                    leadingIcon = Icons.Default.AutoAwesome,
                     checked = settings["dynamicColor"]?.toBoolean() ?: true,
                     onChange = { viewModel.setSetting("dynamicColor", it.toString()) },
                 )
-                SettingSwitch(
+                SettingsDivider()
+                SettingsSwitchRow(
                     label = "AMOLED dark",
+                    description = "Pure black background in dark theme",
+                    leadingIcon = Icons.Default.ModeNight,
                     checked = settings["amoled"]?.toBoolean() ?: false,
                     onChange = { viewModel.setSetting("amoled", it.toString()) },
                 )
-                SettingDropdown(
+                SettingsDivider()
+                SettingsDropdownRow(
                     label = "Progress bar style",
                     value = settings["progressStyle"] ?: "pill",
                     options = listOf(
@@ -200,19 +229,23 @@ fun SettingsScreen(viewModel: SettingsViewModel) {
                         "thin" to "Thin",
                         "segmented" to "Segmented",
                     ),
+                    leadingIcon = Icons.Default.Tune,
                     onChange = { viewModel.setSetting("progressStyle", it) },
                 )
-                SettingSwitch(
+                SettingsDivider()
+                SettingsSwitchRow(
                     label = "Reduced motion",
+                    description = "Minimize player animations",
+                    leadingIcon = Icons.Default.Refresh,
                     checked = settings["reducedMotion"]?.toBoolean() ?: false,
                     onChange = { viewModel.setSetting("reducedMotion", it.toString()) },
                 )
             }
         }
+
         item {
-            Section("Lyrics")
-            SettingsCard {
-                SettingDropdown(
+            SettingsSection("Lyrics") {
+                SettingsDropdownRow(
                     label = "Alignment",
                     value = settings["lyricsAlignment"] ?: "center",
                     options = listOf(
@@ -220,9 +253,11 @@ fun SettingsScreen(viewModel: SettingsViewModel) {
                         "start" to "Start",
                         "end" to "End",
                     ),
+                    leadingIcon = Icons.Default.Tune,
                     onChange = { viewModel.setSetting("lyricsAlignment", it) },
                 )
-                SettingDropdown(
+                SettingsDivider()
+                SettingsDropdownRow(
                     label = "Text size",
                     value = settings["lyricsSize"] ?: "normal",
                     options = listOf(
@@ -231,58 +266,72 @@ fun SettingsScreen(viewModel: SettingsViewModel) {
                         "large" to "Large",
                         "xlarge" to "Extra large",
                     ),
+                    leadingIcon = Icons.Default.Update,
                     onChange = { viewModel.setSetting("lyricsSize", it) },
                 )
-                SettingSwitch(
+                SettingsDivider()
+                SettingsSwitchRow(
                     label = "Auto-scroll",
+                    description = "Follow the active lyric line",
+                    leadingIcon = Icons.Default.Refresh,
                     checked = settings["lyricsAutoScroll"]?.toBoolean() != false,
                     onChange = { viewModel.setSetting("lyricsAutoScroll", it.toString()) },
                 )
-                SettingSwitch(
+                SettingsDivider()
+                SettingsSwitchRow(
                     label = "Tap line to seek",
+                    description = "Jump to a line when tapped",
+                    leadingIcon = Icons.Default.Update,
                     checked = settings["lyricsSeek"]?.toBoolean() != false,
                     onChange = { viewModel.setSetting("lyricsSeek", it.toString()) },
                 )
             }
         }
+
         item {
-            Section("Audio & playback")
-            SettingsCard {
-                SettingSwitch(
+            SettingsSection("Audio & playback") {
+                SettingsSwitchRow(
                     label = "Gapless playback",
+                    description = "Continue without gaps between tracks",
+                    leadingIcon = Icons.Default.Refresh,
                     checked = settings["gapless"]?.toBoolean() ?: true,
                     onChange = { viewModel.setSetting("gapless", it.toString()) },
                 )
-                SettingSwitch(
+                SettingsDivider()
+                SettingsSwitchRow(
                     label = "Audio focus handling",
+                    description = "Pause or duck when other apps play audio",
+                    leadingIcon = Icons.Default.Tune,
                     checked = settings["audioFocus"]?.toBoolean() ?: true,
                     onChange = { viewModel.setSetting("audioFocus", it.toString()) },
                 )
             }
         }
+
         item {
-            Section("Discord Rich Presence")
-            SettingsCard {
+            SettingsSection("Discord Rich Presence") {
                 if (!DiscordRpcManager.RPC_APPROVED) {
-                    Text(
-                        "Discord RPC approval pending. Connect and customization options will appear once approved.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    SettingsRow(
+                        title = "Connection pending",
+                        description = "Discord RPC approval pending. Connect and customization options will appear once approved.",
+                        leadingIcon = Icons.Default.Info,
                     )
                 } else {
                     val rpcStatus by DiscordRpcManager.status.collectAsState()
                     val state by PlaybackController.state.collectAsState()
                     val track by PlaybackController.currentTrack.collectAsState()
-                    SettingSwitch(
+                    SettingsSwitchRow(
                         label = "Enable Rich Presence",
+                        description = "Show what you are listening to on Discord",
+                        leadingIcon = Icons.Default.AutoAwesome,
                         checked = settings["discordRpc"]?.toBoolean() ?: false,
                         onChange = {
                             updateDiscordSetting("discordRpc", it.toString())
                             DiscordRpcManager.setEnabled(it)
                         },
                     )
-                    Spacer(Modifier.height(8.dp))
-                    SettingDropdown(
+                    SettingsDivider()
+                    SettingsDropdownRow(
                         label = "Presence status",
                         value = settings["discordPresenceStatus"] ?: "auto",
                         options = listOf(
@@ -292,9 +341,11 @@ fun SettingsScreen(viewModel: SettingsViewModel) {
                             "dnd" to "Do Not Disturb",
                             "invisible" to "Invisible",
                         ),
+                        leadingIcon = Icons.Default.Info,
                         onChange = { updateDiscordSetting("discordPresenceStatus", it) },
                     )
-                    SettingDropdown(
+                    SettingsDivider()
+                    SettingsDropdownRow(
                         label = "Activity type",
                         value = settings["discordActivityType"] ?: "2",
                         options = listOf(
@@ -303,143 +354,236 @@ fun SettingsScreen(viewModel: SettingsViewModel) {
                             "2" to "Listening",
                             "3" to "Watching",
                         ),
+                        leadingIcon = Icons.Default.Tune,
                         onChange = { updateDiscordSetting("discordActivityType", it) },
                     )
-                    SettingTextField(
-                        label = "Activity name",
-                        value = settings["discordName"] ?: DiscordRpcManager.DEFAULT_NAME,
-                        onChange = { updateDiscordSetting("discordName", it) },
-                    )
-                    SettingTextField(
-                        label = "Details",
-                        value = settings["discordDetails"] ?: DiscordRpcManager.DEFAULT_DETAILS,
-                        onChange = { updateDiscordSetting("discordDetails", it) },
-                    )
-                    SettingTextField(
-                        label = "State",
-                        value = settings["discordState"] ?: DiscordRpcManager.DEFAULT_STATE,
-                        onChange = { updateDiscordSetting("discordState", it) },
-                    )
-                    Text(
-                        "Formats: <hime.player.song.name> <hime.player.song.artist> <hime.player.song.album> <hime.player.song.info> <hime.player.status> <hime.player.song.duration> <hime.player.song.remaining>",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    val connecting = rpcStatus == "Waiting for Discord" || rpcStatus.startsWith("Connecting")
-                    Button(
-                        onClick = {
-                            if (rpcStatus == "Connected") {
-                                DiscordRpcManager.setEnabled(false)
-                                updateDiscordSetting("discordRpc", "false")
-                            } else {
-                                DiscordRpcManager.authorize(context)
-                            }
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        enabled = !connecting,
-                    ) {
+                    SettingsDivider()
+                    Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+                        SettingsTextField(
+                            label = "Activity name",
+                            value = settings["discordName"] ?: DiscordRpcManager.DEFAULT_NAME,
+                            onChange = { updateDiscordSetting("discordName", it) },
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        SettingsTextField(
+                            label = "Details",
+                            value = settings["discordDetails"] ?: DiscordRpcManager.DEFAULT_DETAILS,
+                            onChange = { updateDiscordSetting("discordDetails", it) },
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        SettingsTextField(
+                            label = "State",
+                            value = settings["discordState"] ?: DiscordRpcManager.DEFAULT_STATE,
+                            onChange = { updateDiscordSetting("discordState", it) },
+                        )
+                        Spacer(Modifier.height(8.dp))
                         Text(
-                            when {
-                                rpcStatus == "Connected" -> "Disconnect"
-                                connecting -> "Connecting..."
-                                rpcStatus.startsWith("Error") -> "Retry"
-                                else -> "Connect"
-                            },
+                            "Formats: <hime.player.song.name> <hime.player.song.artist> <hime.player.song.album> <hime.player.song.info> <hime.player.status> <hime.player.song.duration> <hime.player.song.remaining>",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        "Status: $rpcStatus",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    SettingsDivider()
+                    val connecting = rpcStatus == "Waiting for Discord" || rpcStatus.startsWith("Connecting")
+                    Row(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+                        FilledTonalButton(
+                            onClick = {
+                                if (rpcStatus == "Connected") {
+                                    DiscordRpcManager.setEnabled(false)
+                                    updateDiscordSetting("discordRpc", "false")
+                                } else {
+                                    DiscordRpcManager.authorize(context)
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = !connecting,
+                        ) {
+                            Text(
+                                when {
+                                    rpcStatus == "Connected" -> "Disconnect"
+                                    connecting -> "Connecting..."
+                                    rpcStatus.startsWith("Error") -> "Retry"
+                                    else -> "Connect"
+                                },
+                            )
+                        }
+                    }
+                    SettingsDivider()
+                    SettingsRow(
+                        title = "Status",
+                        value = rpcStatus,
+                        leadingIcon = Icons.Default.Info,
                     )
-                    Spacer(Modifier.height(12.dp))
-                    DiscordPresencePreview(state, track, settings)
+                    Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+                        DiscordPresencePreview(state, track, settings)
+                    }
                 }
             }
         }
+
         item {
-            notice?.let {
-                Text(it, modifier = Modifier.padding(16.dp), color = MaterialTheme.colorScheme.primary)
+            notice?.let { SettingsNotice(it) }
+        }
+        item {
+            Spacer(Modifier.height(16.dp))
+        }
+    }
+}
+
+@Composable
+private fun SettingsSection(
+    title: String,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+        Text(
+            title,
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.padding(start = 4.dp, top = 8.dp, bottom = 8.dp),
+        )
+        Surface(
+            shape = RoundedCornerShape(24.dp),
+            color = MaterialTheme.colorScheme.surfaceContainerLow,
+        ) {
+            Column(modifier = Modifier.padding(vertical = 8.dp), content = content)
+        }
+    }
+}
+
+@Composable
+private fun SettingsDivider() {
+    HorizontalDivider(
+        modifier = Modifier.padding(horizontal = 16.dp),
+        thickness = 1.dp,
+        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+    )
+}
+
+@Composable
+private fun SettingsRow(
+    title: String,
+    description: String? = null,
+    leadingIcon: ImageVector? = null,
+    value: String? = null,
+    onClick: (() -> Unit)? = null,
+    trailing: @Composable (() -> Unit)? = null,
+) {
+    val clickable = if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 64.dp)
+            .then(clickable)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (leadingIcon != null) {
+            Icon(
+                leadingIcon,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(20.dp),
+            )
+            Spacer(Modifier.width(16.dp))
+        }
+        Column(modifier = Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.bodyLarge)
+            if (description != null) {
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    description,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        if (value != null) {
+            Spacer(Modifier.width(12.dp))
+            Text(
+                value,
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.primary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        when {
+            trailing != null -> {
+                Spacer(Modifier.width(12.dp))
+                trailing()
+            }
+            onClick != null -> {
+                Spacer(Modifier.width(8.dp))
+                Icon(
+                    Icons.Default.ChevronRight,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(20.dp),
+                )
             }
         }
     }
 }
 
 @Composable
-private fun Section(title: String) {
-    SectionHeader(title, modifier = Modifier.padding(top = 16.dp))
-}
-
-@Composable
-private fun SettingsCard(content: @Composable ColumnScope.() -> Unit) {
-    Surface(
-        shape = CardShape,
-        color = MaterialTheme.colorScheme.surfaceContainer,
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 4.dp),
-    ) {
-        Column(modifier = Modifier.padding(16.dp), content = content)
-    }
-}
-
-@Composable
-private fun SettingIconButton(
-    icon: ImageVector,
+private fun SettingsSwitchRow(
     label: String,
-    selected: Boolean = false,
-    onClick: () -> Unit,
+    description: String? = null,
+    leadingIcon: ImageVector? = null,
+    checked: Boolean,
+    onChange: (Boolean) -> Unit,
 ) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        FilledTonalIconButton(
-            onClick = onClick,
-            modifier = Modifier.size(50.dp),
-            shape = CircleShape,
-            colors = IconButtonDefaults.filledTonalIconButtonColors(
-                containerColor = if (selected) MaterialTheme.colorScheme.primary
-                else MaterialTheme.colorScheme.secondaryContainer,
-                contentColor = if (selected) MaterialTheme.colorScheme.onPrimary
-                else MaterialTheme.colorScheme.onSecondaryContainer,
-            ),
-        ) {
-            Icon(icon, contentDescription = label, modifier = Modifier.size(22.dp))
-        }
-        Spacer(Modifier.height(4.dp))
-        Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    }
-}
-
-@Composable
-private fun SettingSwitch(label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 6.dp),
+            .heightIn(min = 64.dp)
+            .clickable { onChange(!checked) }
+            .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(label, modifier = Modifier.weight(1f))
-        Switch(checked = checked, onCheckedChange = onChange)
+        if (leadingIcon != null) {
+            Icon(
+                leadingIcon,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(20.dp),
+            )
+            Spacer(Modifier.width(16.dp))
+        }
+        Column(modifier = Modifier.weight(1f)) {
+            Text(label, style = MaterialTheme.typography.bodyLarge)
+            if (description != null) {
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    description,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        Spacer(Modifier.width(12.dp))
+        Switch(checked = checked, onCheckedChange = null)
     }
 }
 
 @Composable
-private fun SettingDropdown(
+private fun SettingsDropdownRow(
     label: String,
     value: String,
     options: List<Pair<String, String>>,
+    leadingIcon: ImageVector? = null,
     onChange: (String) -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }
     val current = options.firstOrNull { it.first == value }?.second ?: value
     Box(modifier = Modifier.fillMaxWidth()) {
-        OutlinedButton(
+        SettingsRow(
+            title = label,
+            value = current,
+            leadingIcon = leadingIcon,
             onClick = { expanded = true },
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Text("$label: $current", modifier = Modifier.weight(1f))
-        }
+        )
         DropdownMenu(
             expanded = expanded,
             onDismissRequest = { expanded = false },
@@ -459,7 +603,49 @@ private fun SettingDropdown(
 }
 
 @Composable
-private fun SettingTextField(label: String, value: String, onChange: (String) -> Unit) {
+private fun SettingsActionButton(
+    icon: ImageVector,
+    label: String,
+    onClick: () -> Unit,
+) {
+    FilledTonalButton(
+        onClick = onClick,
+        modifier = Modifier.weight(1f),
+        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
+    ) {
+        Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp))
+        Spacer(Modifier.width(6.dp))
+        Text(label, style = MaterialTheme.typography.labelMedium, maxLines = 1)
+    }
+}
+
+@Composable
+private fun SettingsNotice(text: String) {
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                Icons.Default.CheckCircle,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(20.dp),
+            )
+            Spacer(Modifier.width(12.dp))
+            Text(text, style = MaterialTheme.typography.bodyMedium)
+        }
+    }
+}
+
+@Composable
+private fun SettingsTextField(label: String, value: String, onChange: (String) -> Unit) {
     var text by remember(value) { mutableStateOf(value) }
     OutlinedTextField(
         value = text,
