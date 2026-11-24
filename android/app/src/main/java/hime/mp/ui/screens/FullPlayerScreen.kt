@@ -4,9 +4,10 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
 import android.graphics.BlurMaskFilter
+import android.graphics.Canvas as AndroidCanvas
 import android.graphics.Paint
-import android.graphics.RectF
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animate
@@ -21,6 +22,7 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.gestures.scrollBy
@@ -113,6 +115,7 @@ import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -140,9 +143,11 @@ import hime.mp.ui.theme.LocalHimeMotion
 import hime.mp.ui.theme.containerOf
 import hime.mp.util.ArtCache
 import hime.mp.util.formatDuration
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlin.math.abs
 import kotlin.time.TimeSource
 
@@ -800,27 +805,35 @@ private fun BlurredArtwork(
     blurRadius: Dp,
     modifier: Modifier = Modifier,
 ) {
-    val bitmap by produceState<ImageBitmap?>(initialValue = null, key1 = track?.id) {
-        value = track?.let { ArtCache.cached(it) ?: ArtCache.load(it) }?.asImageBitmap()
-    }
     val density = LocalDensity.current
-    val radiusPx = with(density) { blurRadius.toPx() }
-    val paint = remember(radiusPx) {
-        Paint().apply {
-            isFilterBitmap = true
-            maskFilter = BlurMaskFilter(radiusPx.coerceAtLeast(1f), BlurMaskFilter.Blur.NORMAL)
+    val radiusPx = with(density) { blurRadius.toPx() }.coerceAtLeast(1f)
+    val blurred by produceState<ImageBitmap?>(initialValue = null, key1 = track?.id, key2 = radiusPx) {
+        val source = track?.let { ArtCache.cached(it) ?: ArtCache.load(it) }
+        value = if (source == null) {
+            null
+        } else {
+            withContext(Dispatchers.IO) {
+                runCatching {
+                    val output = Bitmap.createBitmap(source.width, source.height, Bitmap.Config.ARGB_8888)
+                    val canvas = AndroidCanvas(output)
+                    val paint = Paint().apply {
+                        isFilterBitmap = true
+                        maskFilter = BlurMaskFilter(radiusPx, BlurMaskFilter.Blur.NORMAL)
+                    }
+                    canvas.drawBitmap(source, 0f, 0f, paint)
+                    output.asImageBitmap()
+                }.getOrNull()
+            }
         }
     }
-    Canvas(modifier) {
-        val image = bitmap ?: return@Canvas
-        drawIntoCanvas { canvas ->
-            canvas.nativeCanvas.drawBitmap(
-                image.asAndroidBitmap(),
-                null,
-                RectF(0f, 0f, size.width, size.height),
-                paint,
-            )
-        }
+    val image = blurred
+    if (image != null) {
+        Image(
+            bitmap = image,
+            contentDescription = null,
+            modifier = modifier,
+            contentScale = ContentScale.Crop,
+        )
     }
 }
 
