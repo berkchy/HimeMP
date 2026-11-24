@@ -1,24 +1,36 @@
 package hime.mp.ui.components
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.SkipNext
+import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -28,21 +40,39 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import hime.mp.core.Track
 import hime.mp.data.PlaybackController
 import hime.mp.ui.theme.AlbumThemeController
 import hime.mp.ui.theme.LocalHimeMotion
+import hime.mp.util.ArtCache
 import kotlinx.coroutines.launch
 import kotlin.math.abs
+
+private fun miniAccent(raw: Color): Color = lerp(raw, Color.White, 0.42f)
+
+private fun miniOnAccent(accent: Color): Color =
+    if (accent.luminance() > 0.55f) Color(0xFF1B1418) else Color.White
 
 @Composable
 fun MiniPlayer(onExpand: () -> Unit, progressStyle: String = "pill") {
@@ -54,19 +84,32 @@ fun MiniPlayer(onExpand: () -> Unit, progressStyle: String = "pill") {
     val scope = rememberCoroutineScope()
     if (track == null) return
 
+    val rawAccent = palette?.primary?.let { Color(it) } ?: MaterialTheme.colorScheme.primary
+    val accent by animateColorAsState(
+        targetValue = miniAccent(rawAccent),
+        animationSpec = tween(motion.standard),
+        label = "miniAccent",
+    )
+    val container by animateColorAsState(
+        targetValue = lerp(MaterialTheme.colorScheme.surfaceContainerHigh, rawAccent, 0.16f),
+        animationSpec = tween(motion.standard),
+        label = "miniContainer",
+    )
     val fraction = if (state.durationMs > 0) {
         (state.positionMs.toFloat() / state.durationMs).coerceIn(0f, 1f)
     } else {
         0f
     }
+
     Surface(
-        shape = RoundedCornerShape(20.dp),
-        color = MaterialTheme.colorScheme.surfaceContainer,
-        tonalElevation = 1.dp,
-        shadowElevation = 2.dp,
+        shape = CircleShape,
+        color = container,
+        tonalElevation = 2.dp,
+        shadowElevation = 8.dp,
         modifier = Modifier
-            .padding(horizontal = 12.dp, vertical = 4.dp)
+            .padding(horizontal = 8.dp, vertical = 6.dp)
             .fillMaxWidth()
+            .height(72.dp)
             .clickable(onClick = onExpand)
             .pointerInput(Unit) {
                 var totalX = 0f
@@ -124,63 +167,157 @@ fun MiniPlayer(onExpand: () -> Unit, progressStyle: String = "pill") {
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(if (progressStyle == "thin") 2.dp else 3.dp),
-                trackColor = MaterialTheme.colorScheme.secondaryContainer,
-                color = palette?.primary?.let { Color(it) } ?: MaterialTheme.colorScheme.primary,
+                trackColor = Color.White.copy(alpha = 0.20f),
+                color = accent,
             )
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                    .padding(horizontal = 10.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                AlbumArt(
-                    track,
+                ShapedArtworkWithProgress(
+                    track = track,
+                    fraction = fraction,
+                    accent = accent,
                     modifier = Modifier
-                        .size(42.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .graphicsLayer { translationX = dragX * 0.35f },
+                        .size(48.dp)
+                        .graphicsLayer { translationX = dragX * 0.25f },
                 )
                 Column(
                     modifier = Modifier
                         .weight(1f)
-                        .padding(horizontal = 12.dp),
-                ) {
-                    Text(
-                        track!!.title,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        style = MaterialTheme.typography.titleMedium,
-                    )
-                    Text(
-                        track!!.artist,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                FilledIconButton(
-                    onClick = { PlaybackController.togglePlay() },
-                    colors = IconButtonDefaults.filledIconButtonColors(
-                        containerColor = MaterialTheme.colorScheme.primaryContainer,
-                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                    ),
+                        .padding(horizontal = 10.dp),
                 ) {
                     AnimatedContent(
-                        targetState = state.playing,
+                        targetState = track?.id,
                         transitionSpec = {
-                            fadeIn(animationSpec = androidx.compose.animation.core.tween(motion.quick)) togetherWith
-                                fadeOut(animationSpec = androidx.compose.animation.core.tween(motion.quick))
+                            fadeIn(animationSpec = tween(motion.quick)) togetherWith
+                                fadeOut(animationSpec = tween(motion.quick))
                         },
-                        label = "playPause",
-                    ) { playing ->
+                        label = "miniTrack",
+                    ) {
+                        Column {
+                            Text(
+                                track?.title.orEmpty(),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                color = Color.White,
+                            )
+                            Text(
+                                track?.artist.orEmpty(),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color.White.copy(alpha = 0.78f),
+                            )
+                        }
+                    }
+                }
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
+                    IconButton(onClick = { PlaybackController.previous() }, modifier = Modifier.size(34.dp)) {
                         Icon(
-                            if (playing) Icons.Default.Pause else Icons.Default.PlayArrow,
-                            contentDescription = if (playing) "Pause" else "Play",
+                            Icons.Default.SkipPrevious,
+                            contentDescription = "Previous",
+                            modifier = Modifier.size(18.dp),
+                            tint = Color.White.copy(alpha = 0.88f),
+                        )
+                    }
+                    FilledIconButton(
+                        onClick = { PlaybackController.togglePlay() },
+                        modifier = Modifier.size(44.dp),
+                        colors = IconButtonDefaults.filledIconButtonColors(
+                            containerColor = accent,
+                            contentColor = miniOnAccent(accent),
+                        ),
+                    ) {
+                        AnimatedContent(
+                            targetState = state.playing,
+                            transitionSpec = {
+                                fadeIn(animationSpec = tween(motion.quick)) togetherWith
+                                    fadeOut(animationSpec = tween(motion.quick))
+                            },
+                            label = "miniPlayPause",
+                        ) { playing ->
+                            Icon(
+                                if (playing) Icons.Default.Pause else Icons.Default.PlayArrow,
+                                contentDescription = if (playing) "Pause" else "Play",
+                                modifier = Modifier.size(22.dp),
+                            )
+                        }
+                    }
+                    IconButton(onClick = { PlaybackController.next() }, modifier = Modifier.size(34.dp)) {
+                        Icon(
+                            Icons.Default.SkipNext,
+                            contentDescription = "Next",
+                            modifier = Modifier.size(18.dp),
+                            tint = Color.White.copy(alpha = 0.88f),
                         )
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun ShapedArtworkWithProgress(
+    track: Track?,
+    fraction: Float,
+    accent: Color,
+    modifier: Modifier = Modifier,
+) {
+    val bitmap by produceState<ImageBitmap?>(initialValue = null, key1 = track?.id) {
+        value = track?.let { ArtCache.cached(it) ?: ArtCache.load(it) }?.asImageBitmap()
+    }
+    Box(modifier, contentAlignment = Alignment.Center) {
+        Canvas(Modifier.fillMaxSize()) {
+            val stroke = 3.dp.toPx()
+            val inset = stroke / 2f
+            val arcSize = Size(size.width - stroke, size.height - stroke)
+            drawArc(
+                color = Color.White.copy(alpha = 0.24f),
+                startAngle = -90f,
+                sweepAngle = 360f,
+                useCenter = false,
+                topLeft = Offset(inset, inset),
+                size = arcSize,
+                style = Stroke(width = stroke),
+            )
+            drawArc(
+                color = accent,
+                startAngle = -90f,
+                sweepAngle = 360f * fraction,
+                useCenter = false,
+                topLeft = Offset(inset, inset),
+                size = arcSize,
+                style = Stroke(width = stroke),
+            )
+        }
+        val shape = RoundedCornerShape(18.dp, 6.dp, 18.dp, 6.dp)
+        val image = bitmap
+        if (image != null) {
+            Image(
+                bitmap = image,
+                contentDescription = track?.title,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(5.dp)
+                    .clip(shape),
+                contentScale = ContentScale.Crop,
+            )
+        } else {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .padding(5.dp)
+                    .clip(shape)
+                    .background(accent.copy(alpha = 0.28f)),
+            )
         }
     }
 }

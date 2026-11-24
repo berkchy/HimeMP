@@ -1,6 +1,12 @@
 package hime.mp.ui.screens
 
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
+import android.graphics.BlurMaskFilter
+import android.graphics.Paint
+import android.graphics.RectF
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animate
@@ -35,6 +41,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -42,17 +50,28 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.Cast
+import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material.icons.filled.List
+import androidx.compose.material.icons.filled.Lyrics
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Repeat
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.RepeatOne
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.SkipNext
+import androidx.compose.material.icons.filled.SmartDisplay
 import androidx.compose.material.icons.filled.SkipPrevious
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
@@ -90,6 +109,8 @@ import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
@@ -97,6 +118,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -123,6 +145,11 @@ import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.time.TimeSource
 
+private fun playerAccent(raw: Color): Color = lerp(raw, Color.White, 0.42f)
+
+private fun playerOnAccent(accent: Color): Color =
+    if (accent.luminance() > 0.55f) Color(0xFF1B1418) else Color.White
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FullPlayerScreen(
@@ -130,14 +157,19 @@ fun FullPlayerScreen(
     onToggleFavorite: (Track) -> Unit,
     settings: Map<String, String> = emptyMap(),
 ) {
+    val context = LocalContext.current
     val state by PlaybackController.state.collectAsState()
     val track by PlaybackController.currentTrack.collectAsState()
     val motion = LocalHimeMotion.current
     val palette by AlbumThemeController.palette.collectAsState()
+    val rawAccent = palette?.primary?.let { Color(it) } ?: MaterialTheme.colorScheme.primary
+    val accent = playerAccent(rawAccent)
+    val onAccent = playerOnAccent(accent)
     var scrubbing by remember { mutableStateOf(false) }
     var scrub by remember { mutableStateOf(0f) }
     var showQueue by remember { mutableStateOf(false) }
     var showLyrics by remember { mutableStateOf(false) }
+    var showMore by remember { mutableStateOf(false) }
     var lyrics by remember { mutableStateOf<LyricsData?>(null) }
     var lyricsLoading by remember { mutableStateOf(false) }
     var artWidth by remember { mutableStateOf(0) }
@@ -172,21 +204,22 @@ fun FullPlayerScreen(
     val shownPosition = (fraction * state.durationMs).toLong()
     val lyricsPosition = rememberSmoothLyricsPosition(shownPosition, state.playing && !scrubbing)
     val baseBackground = MaterialTheme.colorScheme.surfaceContainerLowest
-    val backgroundTint = palette?.primary?.let { containerOf(Color(it), dark = true) } ?: baseBackground
-    val playerBackground = Brush.verticalGradient(
+    val scrim = Brush.verticalGradient(
         listOf(
-            lerp(backgroundTint, baseBackground, 0.35f),
-            baseBackground,
-            lerp(backgroundTint, baseBackground, 0.7f),
+            Color.Black.copy(alpha = 0.30f),
+            Color.Black.copy(alpha = 0.52f),
+            Color.Black.copy(alpha = 0.68f),
         ),
     )
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(playerBackground)
-            .padding(horizontal = 16.dp),
-    ) {
+    Box(Modifier.fillMaxSize().background(baseBackground)) {
+        BlurredArtwork(track, 56.dp, Modifier.fillMaxSize())
+        Box(Modifier.fillMaxSize().background(scrim))
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 20.dp, vertical = 8.dp),
+        ) {
         Column(
             modifier = Modifier.pointerInput(Unit) {
                 var totalDrag = 0f
@@ -201,24 +234,19 @@ fun FullPlayerScreen(
                 )
             },
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onClose) {
-                    Icon(Icons.Default.ArrowDropDown, contentDescription = "Collapse player")
-                }
-                Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("Now playing", style = MaterialTheme.typography.labelLarge)
-                    Text(
-                        track?.album.orEmpty(),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                TextButton(onClick = { showLyrics = !showLyrics }) {
-                    Text(if (showLyrics) "Hide lyrics" else "Lyrics")
-                }
-                IconButton(onClick = { showQueue = true }) {
-                    Icon(Icons.Default.List, contentDescription = "Queue")
-                }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                CircularGlassButton(Icons.Default.ArrowDropDown, "Collapse player", onClose)
+                TwoOptionPill(
+                    selected = if (showLyrics) 1 else 0,
+                    accent = accent,
+                    onAccent = onAccent,
+                    onChange = { showLyrics = it == 1 },
+                )
+                CircularGlassButton(Icons.Default.Cast, "Output") { showQueue = true }
             }
 
             Box(
@@ -326,34 +354,40 @@ fun FullPlayerScreen(
                 }
             }
 
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(12.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text(
                         track?.title.orEmpty(),
                         style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Bold,
                         textAlign = TextAlign.Start,
                         maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
                     Text(
                         track?.artist.orEmpty(),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
                 }
-                val favoriteScale by animateFloatAsState(
-                    targetValue = if (track?.favorite == true) 1.15f else 1f,
-                    label = "favoriteScale",
-                )
-                IconButton(onClick = { track?.let(onToggleFavorite) }) {
-                    Icon(
-                        if (track?.favorite == true) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                        contentDescription = "Favorite",
-                        modifier = Modifier.scale(favoriteScale),
-                        tint = if (track?.favorite == true) MaterialTheme.colorScheme.primary
-                        else MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                Spacer(Modifier.width(10.dp))
+                SquareGlassButton(Icons.Default.Share, "Share") {
+                    val current = track ?: return@SquareGlassButton
+                    val intent = Intent(Intent.ACTION_SEND).apply {
+                        type = "text/plain"
+                        putExtra(Intent.EXTRA_TEXT, "${current.title} — ${current.artist}")
+                    }
+                    runCatching { context.startActivity(Intent.createChooser(intent, "Share track")) }
                 }
+                Spacer(Modifier.width(8.dp))
+                SquareGlassButton(
+                    icon = if (track?.favorite == true) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                    label = "Favorite",
+                    tint = if (track?.favorite == true) accent else Color.Unspecified,
+                ) { track?.let(onToggleFavorite) }
             }
         }
 
@@ -374,69 +408,251 @@ fun FullPlayerScreen(
         }
 
         Spacer(Modifier.weight(1f))
-        Surface(
-            shape = MaterialTheme.shapes.extraLarge,
-            color = containerOf(MaterialTheme.colorScheme.secondary, dark = true),
-            tonalElevation = 2.dp,
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(bottom = 16.dp),
+                .padding(vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceEvenly,
         ) {
-            Row(
+            CircularGlassButton(
+                icon = Icons.Default.SkipPrevious,
+                label = "Previous",
+                onClick = { PlaybackController.previous() },
+                size = 64.dp,
+            )
+            Button(
+                onClick = { PlaybackController.togglePlay() },
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 8.dp, vertical = 6.dp),
-                horizontalArrangement = Arrangement.SpaceEvenly,
-                verticalAlignment = Alignment.CenterVertically,
+                    .height(64.dp)
+                    .widthIn(min = 180.dp),
+                shape = RoundedCornerShape(32.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = accent,
+                    contentColor = onAccent,
+                ),
             ) {
-                IconButton(onClick = { PlaybackController.setShuffle(!state.shuffle) }) {
-                    Icon(
-                        Icons.Default.Shuffle,
-                        contentDescription = "Shuffle",
-                        tint = if (state.shuffle) MaterialTheme.colorScheme.primary
-                        else MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                IconButton(onClick = { PlaybackController.previous() }) {
-                    Icon(Icons.Default.SkipPrevious, contentDescription = "Previous")
-                }
-                FilledIconButton(
-                    onClick = { PlaybackController.togglePlay() },
-                    modifier = Modifier.size(68.dp),
-                ) {
-                    AnimatedContent(
-                        targetState = state.playing,
-                        transitionSpec = {
-                            fadeIn(animationSpec = androidx.compose.animation.core.tween(motion.quick)) togetherWith
-                                fadeOut(animationSpec = androidx.compose.animation.core.tween(motion.quick))
-                        },
-                        label = "playPauseFull",
-                    ) { playing ->
+                AnimatedContent(
+                    targetState = state.playing,
+                    transitionSpec = {
+                        fadeIn(animationSpec = tween(motion.quick)) togetherWith
+                            fadeOut(animationSpec = tween(motion.quick))
+                    },
+                    label = "playPauseFull",
+                ) { playing ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
                             if (playing) Icons.Default.Pause else Icons.Default.PlayArrow,
-                            contentDescription = if (playing) "Pause" else "Play",
-                            modifier = Modifier.size(32.dp),
+                            contentDescription = null,
+                            modifier = Modifier.size(26.dp),
+                        )
+                        Spacer(Modifier.width(10.dp))
+                        Text(
+                            if (playing) "Duraklat" else "Çal",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
                         )
                     }
                 }
-                IconButton(onClick = { PlaybackController.next() }) {
-                    Icon(Icons.Default.SkipNext, contentDescription = "Next")
-                }
-                IconButton(onClick = { PlaybackController.setRepeat((state.repeat + 1) % 3) }) {
-                    Icon(
-                        if (state.repeat == 2) Icons.Default.RepeatOne else Icons.Default.Repeat,
-                        contentDescription = "Repeat",
-                        tint = if (state.repeat != 0) MaterialTheme.colorScheme.primary
-                        else MaterialTheme.colorScheme.onSurfaceVariant,
+            }
+            CircularGlassButton(
+                icon = Icons.Default.SkipNext,
+                label = "Next",
+                onClick = { PlaybackController.next() },
+                size = 64.dp,
+            )
+        }
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                GlassPillAction(Icons.Default.List, "Queue", accent) { showQueue = true }
+                GlassPillAction(Icons.Default.DarkMode, "Sleep", accent) {}
+                GlassPillAction(
+                    Icons.Default.Shuffle,
+                    "Shuffle",
+                    accent,
+                    state.shuffle,
+                ) { PlaybackController.setShuffle(!state.shuffle) }
+                GlassPillAction(
+                    Icons.Default.Lyrics,
+                    "Lyrics",
+                    accent,
+                    showLyrics,
+                ) { showLyrics = !showLyrics }
+                GlassPillAction(
+                    if (state.repeat == 2) Icons.Default.RepeatOne else Icons.Default.Repeat,
+                    "Repeat",
+                    accent,
+                    state.repeat != 0,
+                ) { PlaybackController.setRepeat((state.repeat + 1) % 3) }
+            }
+            Box {
+                CircularGlassButton(Icons.Default.MoreVert, "More", { showMore = true }, 48.dp)
+                DropdownMenu(
+                    expanded = showMore,
+                    onDismissRequest = { showMore = false },
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("Copy track title") },
+                        onClick = {
+                            track?.let { current ->
+                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                clipboard.setPrimaryClip(
+                                    ClipData.newPlainText("track", "${current.title} — ${current.artist}"),
+                                )
+                            }
+                            showMore = false
+                        },
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Open queue") },
+                        onClick = {
+                            showQueue = true
+                            showMore = false
+                        },
                     )
                 }
             }
+        }
         }
     }
 
     if (showQueue) {
         ModalBottomSheet(onDismissRequest = { showQueue = false }) {
             QueueSheet(state = state)
+        }
+    }
+}
+
+@Composable
+private fun CircularGlassButton(
+    icon: ImageVector,
+    label: String,
+    onClick: () -> Unit,
+    size: Dp = 44.dp,
+) {
+    Box(
+        modifier = Modifier
+            .size(size)
+            .clip(CircleShape)
+            .background(MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.42f))
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            icon,
+            contentDescription = label,
+            modifier = Modifier.size(20.dp),
+            tint = Color.White,
+        )
+    }
+}
+
+@Composable
+private fun TwoOptionPill(
+    selected: Int,
+    accent: Color,
+    onAccent: Color,
+    onChange: (Int) -> Unit,
+) {
+    val options = listOf(
+        Icons.Default.Headphones to "Player",
+        Icons.Default.SmartDisplay to "Lyrics",
+    )
+    Row(
+        modifier = Modifier
+            .clip(RoundedCornerShape(50))
+            .background(MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.42f))
+            .padding(4.dp),
+    ) {
+        options.forEachIndexed { index, (icon, label) ->
+            val active = index == selected
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(50))
+                    .background(if (active) accent else Color.Transparent)
+                    .clickable { onChange(index) }
+                    .padding(horizontal = 18.dp, vertical = 8.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        icon,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                        tint = if (active) onAccent else Color.White.copy(alpha = 0.78f),
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        label,
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = if (active) FontWeight.Bold else FontWeight.Medium,
+                        color = if (active) onAccent else Color.White.copy(alpha = 0.78f),
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SquareGlassButton(
+    icon: ImageVector,
+    label: String,
+    tint: Color = Color.Unspecified,
+    onClick: () -> Unit,
+) {
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.42f),
+        modifier = Modifier
+            .size(48.dp)
+            .clickable(onClick = onClick),
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Icon(
+                icon,
+                contentDescription = label,
+                modifier = Modifier.size(20.dp),
+                tint = if (tint == Color.Unspecified) Color.White else tint,
+            )
+        }
+    }
+}
+
+@Composable
+private fun GlassPillAction(
+    icon: ImageVector,
+    label: String,
+    accent: Color,
+    active: Boolean = false,
+    onClick: () -> Unit,
+) {
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = if (active) {
+            accent.copy(alpha = 0.28f)
+        } else {
+            MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.38f)
+        },
+        modifier = Modifier.clickable(onClick = onClick),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                icon,
+                contentDescription = label,
+                modifier = Modifier.size(18.dp),
+                tint = if (active) accent else Color.White.copy(alpha = 0.82f),
+            )
         }
     }
 }
@@ -450,8 +666,8 @@ private fun ModernSeekBar(
     modifier: Modifier = Modifier,
 ) {
     val palette by AlbumThemeController.palette.collectAsState()
-    val accent = palette?.primary?.let { Color(it) } ?: MaterialTheme.colorScheme.primary
-    val trackColor = MaterialTheme.colorScheme.surfaceContainerHighest
+    val accent = playerAccent(palette?.primary?.let { Color(it) } ?: MaterialTheme.colorScheme.primary)
+    val trackColor = Color.White.copy(alpha = 0.24f)
     var widthPx by remember { mutableStateOf(1) }
     val density = LocalDensity.current
     Box(
