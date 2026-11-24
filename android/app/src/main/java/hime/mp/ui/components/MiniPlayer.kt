@@ -44,7 +44,7 @@ import kotlinx.coroutines.launch
 import kotlin.math.abs
 
 @Composable
-fun MiniPlayer(onExpand: () -> Unit) {
+fun MiniPlayer(onExpand: () -> Unit, progressStyle: String = "pill") {
     val state by PlaybackController.state.collectAsState()
     val track by PlaybackController.currentTrack.collectAsState()
     val motion = LocalHimeMotion.current
@@ -122,7 +122,7 @@ fun MiniPlayer(onExpand: () -> Unit) {
                 progress = { fraction },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(2.dp),
+                    .height(if (progressStyle == "thin") 2.dp else 3.dp),
                 trackColor = MaterialTheme.colorScheme.surfaceVariant,
                 color = palette?.primary?.let { Color(it) } ?: MaterialTheme.colorScheme.primary,
             )

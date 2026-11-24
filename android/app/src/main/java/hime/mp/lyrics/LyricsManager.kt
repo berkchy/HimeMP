@@ -15,6 +15,8 @@ import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
+private data class FetchResult(val body: String? = null, val notFound: Boolean = false)
+
 object LyricsManager {
     @Volatile
     private var appContext: Context? = null
@@ -31,11 +33,17 @@ object LyricsManager {
 
     suspend fun load(track: Track?): LyricsData = withContext(Dispatchers.IO) { loadBlocking(track) }
 
+    suspend fun refresh(track: Track?): LyricsData = withContext(Dispatchers.IO) {
+        val context = appContext
+        if (track == null || context == null) return@withContext LyricsData("error", emptyList())
+        runCatching { cacheFile(context, track).delete() }
+        loadBlocking(track)
+    }
+
     private fun loadBlocking(track: Track?): LyricsData {
         if (track == null) return LyricsData("none", emptyList())
-        val context = appContext ?: return LyricsData("none", emptyList())
-        val key = cacheKey(track)
-        val file = File(File(context.filesDir, "lyrics"), "$key.json")
+        val context = appContext ?: return LyricsData("error", emptyList())
+        val file = cacheFile(context, track)
 
         readCache(file)?.let { return it }
 
@@ -52,12 +60,12 @@ object LyricsManager {
             .addQueryParameter("d", duration.toString())
             .build()
 
-        fetch(betterUrl.toString())?.let { body ->
-            runCatching {
-                val ttml = JSONObject(body).optString("ttml").orEmpty()
-                val lines = parseTtml(ttml)
-                if (lines.isNotEmpty()) return writeCache(file, LyricsData("BetterLyrics", lines))
-            }
+        val better = fetch(betterUrl.toString())
+        if (better.body != null) {
+            val lines = runCatching {
+                parseTtml(JSONObject(better.body).optString("ttml").orEmpty())
+            }.getOrDefault(emptyList())
+            if (lines.isNotEmpty()) return writeCache(file, LyricsData("BetterLyrics", lines))
         }
 
         val lrclibUrl = HttpUrl.Builder()
@@ -71,29 +79,35 @@ object LyricsManager {
             .addQueryParameter("duration", duration.toString())
             .build()
 
-        fetch(lrclibUrl.toString())?.let { body ->
-            runCatching {
-                val json = JSONObject(body)
+        val lrclib = fetch(lrclibUrl.toString())
+        if (lrclib.body != null) {
+            val lines = runCatching {
+                val json = JSONObject(lrclib.body)
                 val synced = json.optString("syncedLyrics").orEmpty()
                 val plain = json.optString("plainLyrics").orEmpty()
-                val lines = if (synced.isNotBlank()) parseLrc(synced) else parsePlainLyrics(plain)
-                if (lines.isNotEmpty()) return writeCache(file, LyricsData("LRCLIB", lines))
-            }
+                if (synced.isNotBlank()) parseLrc(synced) else parsePlainLyrics(plain)
+            }.getOrDefault(emptyList())
+            if (lines.isNotEmpty()) return writeCache(file, LyricsData("LRCLIB", lines))
         }
 
-        return writeCache(file, LyricsData("none", emptyList()))
+        val notFound = better.notFound || lrclib.notFound
+        return writeCache(file, LyricsData(if (notFound) "none" else "error", emptyList()), cacheMiss = notFound)
     }
 
-    private fun fetch(url: String): String? {
+    private fun fetch(url: String): FetchResult {
         val request = Request.Builder()
             .url(url)
-            .header("User-Agent", "HimeMP/0.5.10 (Android)")
+            .header("User-Agent", "HimeMP/0.5.12 (Android)")
             .build()
         return runCatching {
             client.newCall(request).execute().use { response ->
-                if (response.isSuccessful) response.body?.string() else null
+                when {
+                    response.isSuccessful -> FetchResult(body = response.body?.string())
+                    response.code == 404 -> FetchResult(notFound = true)
+                    else -> FetchResult()
+                }
             }
-        }.getOrNull()
+        }.getOrDefault(FetchResult())
     }
 
     private fun readCache(file: File): LyricsData? {
@@ -112,7 +126,8 @@ object LyricsManager {
         return LyricsData(cached.optString("source", "cache"), lines)
     }
 
-    private fun writeCache(file: File, data: LyricsData): LyricsData {
+    private fun writeCache(file: File, data: LyricsData, cacheMiss: Boolean = data.lines.isNotEmpty()): LyricsData {
+        if (data.lines.isEmpty() && !cacheMiss) return data
         runCatching {
             file.parentFile?.mkdirs()
             val array = JSONArray()
@@ -128,6 +143,9 @@ object LyricsManager {
         }
         return data
     }
+
+    private fun cacheFile(context: Context, track: Track): File =
+        File(File(context.filesDir, "lyrics"), "${cacheKey(track)}.json")
 
     private fun cacheKey(track: Track): String {
         val raw = listOf(track.title, track.artist.ifBlank { track.albumArtist }, track.album, (track.durationMs / 1_000L).toString())

@@ -9,12 +9,15 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
@@ -37,6 +40,7 @@ import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Repeat
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.RepeatOne
 import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.SkipNext
@@ -47,6 +51,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -62,17 +67,22 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import hime.mp.core.PlaybackState
 import hime.mp.core.Track
 import hime.mp.data.MusicRepository
@@ -94,10 +104,12 @@ import kotlin.math.abs
 fun FullPlayerScreen(
     onClose: () -> Unit,
     onToggleFavorite: (Track) -> Unit,
+    settings: Map<String, String> = emptyMap(),
 ) {
     val state by PlaybackController.state.collectAsState()
     val track by PlaybackController.currentTrack.collectAsState()
     val motion = LocalHimeMotion.current
+    val palette by AlbumThemeController.palette.collectAsState()
     var scrubbing by remember { mutableStateOf(false) }
     var scrub by remember { mutableStateOf(0f) }
     var showQueue by remember { mutableStateOf(false) }
@@ -123,13 +135,31 @@ fun FullPlayerScreen(
         }
     }
 
+    fun refreshLyrics() {
+        val current = track ?: return
+        scope.launch {
+            lyricsLoading = true
+            lyrics = LyricsManager.refresh(current)
+            lyricsLoading = false
+        }
+    }
+
     val fraction = if (state.durationMs > 0) scrub else 0f
     val shownPosition = (fraction * state.durationMs).toLong()
+    val baseBackground = MaterialTheme.colorScheme.surfaceContainerLowest
+    val backgroundTint = palette?.primary?.let { containerOf(Color(it), dark = true) } ?: baseBackground
+    val playerBackground = Brush.verticalGradient(
+        listOf(
+            lerp(backgroundTint, baseBackground, 0.35f),
+            baseBackground,
+            lerp(backgroundTint, baseBackground, 0.7f),
+        ),
+    )
 
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.surfaceContainerLowest)
+            .background(playerBackground)
             .padding(horizontal = 16.dp),
     ) {
         Column(
@@ -265,6 +295,7 @@ fun FullPlayerScreen(
 
         Spacer(Modifier.height(8.dp))
         ModernSeekBar(
+            style = settings["progressStyle"] ?: "pill",
             fraction = fraction,
             onScrub = { scrubbing = true; scrub = it },
             onScrubFinish = {
@@ -280,7 +311,14 @@ fun FullPlayerScreen(
 
         if (showLyrics) {
             Spacer(Modifier.height(8.dp))
-            LyricsPanel(lyrics, lyricsLoading, shownPosition, Modifier.fillMaxWidth().weight(1f))
+            LyricsPanel(
+                data = lyrics,
+                loading = lyricsLoading,
+                positionMs = shownPosition,
+                settings = settings,
+                onRefresh = { refreshLyrics() },
+                modifier = Modifier.fillMaxWidth().weight(1f),
+            )
         } else {
             Spacer(Modifier.weight(1f))
         }
@@ -353,6 +391,7 @@ fun FullPlayerScreen(
 
 @Composable
 private fun ModernSeekBar(
+    style: String,
     fraction: Float,
     onScrub: (Float) -> Unit,
     onScrubFinish: () -> Unit,
@@ -360,6 +399,7 @@ private fun ModernSeekBar(
 ) {
     val palette by AlbumThemeController.palette.collectAsState()
     val accent = palette?.primary?.let { Color(it) } ?: MaterialTheme.colorScheme.primary
+    val trackColor = MaterialTheme.colorScheme.surfaceContainerHighest
     var widthPx by remember { mutableStateOf(1) }
     val density = LocalDensity.current
     Box(
@@ -388,76 +428,234 @@ private fun ModernSeekBar(
                 )
             },
     ) {
-        Box(
-            Modifier
-                .align(Alignment.CenterStart)
-                .fillMaxWidth()
-                .height(6.dp)
-                .clip(RoundedCornerShape(3.dp))
-                .background(MaterialTheme.colorScheme.surfaceContainerHighest),
-        )
-        Box(
-            Modifier
-                .align(Alignment.CenterStart)
-                .fillMaxWidth(fraction)
-                .height(6.dp)
-                .clip(RoundedCornerShape(3.dp))
-                .background(accent),
-        )
-        Box(
-            Modifier
-                .align(Alignment.CenterStart)
-                .offset(x = with(density) { (widthPx * fraction).toDp() - 9.dp })
-                .size(18.dp)
-                .clip(CircleShape)
-                .background(accent),
-        )
+        when (style) {
+            "thin" -> {
+                Box(
+                    Modifier
+                        .align(Alignment.CenterStart)
+                        .fillMaxWidth()
+                        .height(3.dp)
+                        .clip(RoundedCornerShape(2.dp))
+                        .background(trackColor),
+                )
+                Box(
+                    Modifier
+                        .align(Alignment.CenterStart)
+                        .fillMaxWidth(fraction)
+                        .height(3.dp)
+                        .clip(RoundedCornerShape(2.dp))
+                        .background(accent),
+                )
+            }
+
+            "classic" -> {
+                Box(
+                    Modifier
+                        .align(Alignment.CenterStart)
+                        .fillMaxWidth()
+                        .height(4.dp)
+                        .clip(RoundedCornerShape(2.dp))
+                        .background(trackColor),
+                )
+                Box(
+                    Modifier
+                        .align(Alignment.CenterStart)
+                        .fillMaxWidth(fraction)
+                        .height(4.dp)
+                        .clip(RoundedCornerShape(2.dp))
+                        .background(accent),
+                )
+                Box(
+                    Modifier
+                        .align(Alignment.CenterStart)
+                        .offset(x = with(density) { (widthPx * fraction).toDp() - 6.dp })
+                        .size(12.dp)
+                        .clip(CircleShape)
+                        .background(accent),
+                )
+            }
+
+            "segmented" -> {
+                val segments = 36
+                val filled = (fraction * segments).toInt()
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(2.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    repeat(segments) { index ->
+                        Box(
+                            Modifier
+                                .weight(1f)
+                                .height(if (index < filled) 10.dp else 5.dp)
+                                .clip(RoundedCornerShape(2.dp))
+                                .background(if (index < filled) accent else trackColor),
+                        )
+                    }
+                }
+            }
+
+            else -> {
+                Box(
+                    Modifier
+                        .align(Alignment.CenterStart)
+                        .fillMaxWidth()
+                        .height(6.dp)
+                        .clip(RoundedCornerShape(3.dp))
+                        .background(trackColor),
+                )
+                Box(
+                    Modifier
+                        .align(Alignment.CenterStart)
+                        .fillMaxWidth(fraction)
+                        .height(6.dp)
+                        .clip(RoundedCornerShape(3.dp))
+                        .background(accent),
+                )
+                Box(
+                    Modifier
+                        .align(Alignment.CenterStart)
+                        .offset(x = with(density) { (widthPx * fraction).toDp() - 9.dp })
+                        .size(18.dp)
+                        .clip(CircleShape)
+                        .background(accent),
+                )
+            }
+        }
     }
 }
 
 @Composable
-private fun LyricsPanel(data: LyricsData?, loading: Boolean, positionMs: Long, modifier: Modifier = Modifier) {
+private fun LyricsPanel(
+    data: LyricsData?,
+    loading: Boolean,
+    positionMs: Long,
+    settings: Map<String, String>,
+    onRefresh: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val listState = rememberLazyListState()
+    val horizontalAlignment = when (settings["lyricsAlignment"]) {
+        "start" -> Alignment.Horizontal.Start
+        "end" -> Alignment.Horizontal.End
+        else -> Alignment.Horizontal.CenterHorizontally
+    }
+    val textAlign = when (settings["lyricsAlignment"]) {
+        "start" -> TextAlign.Start
+        "end" -> TextAlign.End
+        else -> TextAlign.Center
+    }
+    val baseSize = when (settings["lyricsSize"]) {
+        "small" -> 15.sp
+        "large" -> 21.sp
+        "xlarge" -> 25.sp
+        else -> 18.sp
+    }
+
     if (loading) {
-        Box(modifier, contentAlignment = Alignment.Center) {
-            CircularProgressIndicator()
-        }
+        Box(modifier, contentAlignment = Alignment.Center) { CircularProgressIndicator() }
         return
     }
     if (data == null || data.lines.isEmpty()) {
         Box(modifier, contentAlignment = Alignment.Center) {
-            Text(
-                "Lyrics not found",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    if (data?.source == "error") "Lyrics unavailable" else "Lyrics not found",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(8.dp))
+                TextButton(onClick = onRefresh) { Text("Retry") }
+            }
         }
         return
     }
+
     val active = data.lines.indexOfLast { it.timeMs in 0..positionMs }.coerceAtLeast(0)
-    LaunchedEffect(active) {
-        runCatching { listState.animateScrollToItem(active, -120) }
-    }
-    LazyColumn(
-        modifier = modifier,
-        state = listState,
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        itemsIndexed(data.lines) { index, line ->
-            Text(
-                line.text,
-                style = if (index == active && data.synced) {
-                    MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-                } else {
-                    MaterialTheme.typography.bodyLarge
-                },
-                color = if (index == active && data.synced) {
-                    MaterialTheme.colorScheme.primary
-                } else {
-                    MaterialTheme.colorScheme.onSurfaceVariant
-                },
-                modifier = Modifier.fillMaxWidth(),
-            )
+    val nextIndex = data.lines.indexOfFirst { it.timeMs > positionMs }
+    val nextTime = data.lines.getOrNull(nextIndex)?.timeMs
+    val previousTime = if (nextIndex > 0) data.lines[nextIndex - 1].timeMs else 0L
+    val gapLength = (nextTime ?: -1L) - previousTime
+    val inGap = data.synced && gapLength > 5_000L && positionMs > previousTime + 1_500L
+    val gapFraction = if (inGap) ((positionMs - previousTime).toFloat() / gapLength).coerceIn(0f, 1f) else 0f
+    val autoScroll = settings["lyricsAutoScroll"]?.toBoolean() != false
+    val seekEnabled = settings["lyricsSeek"]?.toBoolean() != false
+
+    BoxWithConstraints(modifier) {
+        val halfHeight = maxHeight / 2
+        val centerOffset = with(LocalDensity.current) { halfHeight.toPx().toInt() }
+        LaunchedEffect(active, inGap, autoScroll) {
+            if (autoScroll && !inGap) runCatching { listState.animateScrollToItem(active, centerOffset) }
+        }
+        if (inGap) {
+            Column(
+                modifier = Modifier.fillMaxSize(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
+            ) {
+                CircularProgressIndicator(progress = { gapFraction })
+                Spacer(Modifier.height(12.dp))
+                Text(
+                    "Instrumental",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(8.dp))
+                LinearProgressIndicator(
+                    progress = { gapFraction },
+                    modifier = Modifier.fillMaxWidth(0.5f),
+                )
+            }
+        } else {
+            Column(Modifier.fillMaxSize()) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        "Lyrics · ${data.source}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.weight(1f),
+                    )
+                    IconButton(onClick = onRefresh) {
+                        Icon(Icons.Default.Refresh, contentDescription = "Refresh lyrics")
+                    }
+                }
+                LazyColumn(
+                    modifier = Modifier.fillMaxWidth().weight(1f),
+                    state = listState,
+                    horizontalAlignment = horizontalAlignment,
+                    contentPadding = PaddingValues(vertical = (halfHeight - 24.dp).coerceAtLeast(0.dp)),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    itemsIndexed(data.lines) { index, line ->
+                        val isActive = index == active && data.synced
+                        val style = if (isActive) {
+                            MaterialTheme.typography.titleLarge.copy(
+                                fontSize = baseSize * 1.18f,
+                                fontWeight = FontWeight.Bold,
+                                textAlign = textAlign,
+                            )
+                        } else {
+                            MaterialTheme.typography.bodyLarge.copy(
+                                fontSize = baseSize,
+                                textAlign = textAlign,
+                            )
+                        }
+                        Text(
+                            line.text,
+                            style = style,
+                            color = if (isActive) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .alpha(if (isActive) 1f else 0.55f)
+                                .graphicsLayer { scale = if (isActive) 1.05f else 1f }
+                                .clickable(enabled = seekEnabled && line.timeMs >= 0) {
+                                    PlaybackController.seek(line.timeMs)
+                                },
+                        )
+                    }
+                }
+            }
         }
     }
 }

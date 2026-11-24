@@ -172,7 +172,10 @@ fun MainScreen() {
             bottomBar = {
                 Column {
                     if (!fullPlayer) {
-                        MiniPlayer(onExpand = { fullPlayer = true })
+                        MiniPlayer(
+                            onExpand = { fullPlayer = true },
+                            progressStyle = settingsMap["progressStyle"] ?: "pill",
+                        )
                     }
                     NavigationBar(
                         containerColor = MaterialTheme.colorScheme.surfaceContainer,
@@ -236,6 +239,7 @@ fun MainScreen() {
                 ) {
                     FullPlayerScreen(
                         onClose = { fullPlayer = false },
+                        settings = settingsMap,
                         onToggleFavorite = { track ->
                             kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main).launch {
                                 runCatching { hime.mp.data.MusicRepository.setFavorite(track.id, !track.favorite) }

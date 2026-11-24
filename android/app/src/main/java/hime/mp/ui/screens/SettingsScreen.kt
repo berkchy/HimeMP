@@ -191,10 +191,57 @@ fun SettingsScreen(viewModel: SettingsViewModel) {
                     checked = settings["amoled"]?.toBoolean() ?: false,
                     onChange = { viewModel.setSetting("amoled", it.toString()) },
                 )
+                SettingDropdown(
+                    label = "Progress bar style",
+                    value = settings["progressStyle"] ?: "pill",
+                    options = listOf(
+                        "pill" to "Pill",
+                        "classic" to "Classic",
+                        "thin" to "Thin",
+                        "segmented" to "Segmented",
+                    ),
+                    onChange = { viewModel.setSetting("progressStyle", it) },
+                )
                 SettingSwitch(
                     label = "Reduced motion",
                     checked = settings["reducedMotion"]?.toBoolean() ?: false,
                     onChange = { viewModel.setSetting("reducedMotion", it.toString()) },
+                )
+            }
+        }
+        item {
+            Section("Lyrics")
+            SettingsCard {
+                SettingDropdown(
+                    label = "Alignment",
+                    value = settings["lyricsAlignment"] ?: "center",
+                    options = listOf(
+                        "center" to "Center",
+                        "start" to "Start",
+                        "end" to "End",
+                    ),
+                    onChange = { viewModel.setSetting("lyricsAlignment", it) },
+                )
+                SettingDropdown(
+                    label = "Text size",
+                    value = settings["lyricsSize"] ?: "normal",
+                    options = listOf(
+                        "small" to "Small",
+                        "normal" to "Normal",
+                        "large" to "Large",
+                        "xlarge" to "Extra large",
+                    ),
+                    onChange = { viewModel.setSetting("lyricsSize", it) },
+                )
+                SettingSwitch(
+                    label = "Auto-scroll",
+                    checked = settings["lyricsAutoScroll"]?.toBoolean() != false,
+                    onChange = { viewModel.setSetting("lyricsAutoScroll", it.toString()) },
+                )
+                SettingSwitch(
+                    label = "Tap line to seek",
+                    checked = settings["lyricsSeek"]?.toBoolean() != false,
+                    onChange = { viewModel.setSetting("lyricsSeek", it.toString()) },
                 )
             }
         }
