@@ -284,35 +284,37 @@ fun FullPlayerScreen(
                 val blurEnabled = settings["lyricsBlur"]?.toBoolean() ?: true
                 val blurLevel = settings["lyricsBlurIntensity"]?.toIntOrNull()?.coerceIn(0, 4) ?: 2
                 val blurRadius = if (blurEnabled) (4 + blurLevel * 6).dp else 0.dp
-                AnimatedVisibility(
-                    visible = showLyrics,
-                    enter = fadeIn(tween(220)) +
-                        slideInVertically(initialOffsetY = { it / 10 }) +
-                        scaleIn(initialScale = 0.98f),
-                    exit = fadeOut(tween(180)) +
-                        slideOutVertically(targetOffsetY = { it / 10 }) +
-                        scaleOut(targetScale = 0.98f),
-                ) {
-                    Box(
-                        Modifier
-                            .fillMaxSize()
-                            .clip(RoundedCornerShape(28.dp)),
+                Column(Modifier.fillMaxSize()) {
+                    AnimatedVisibility(
+                        visible = showLyrics,
+                        enter = fadeIn(tween(220)) +
+                            slideInVertically(initialOffsetY = { it / 10 }) +
+                            scaleIn(initialScale = 0.98f),
+                        exit = fadeOut(tween(180)) +
+                            slideOutVertically(targetOffsetY = { it / 10 }) +
+                            scaleOut(targetScale = 0.98f),
                     ) {
-                        LyricsBackdrop(
-                            track = track,
-                            accent = accent,
-                            blurRadius = blurRadius,
-                            modifier = Modifier.fillMaxSize(),
-                        )
-                        Box(Modifier.fillMaxSize().padding(16.dp)) {
-                            LyricsPanel(
-                                data = lyrics,
-                                loading = lyricsLoading,
-                                positionMs = lyricsPosition,
-                                settings = settings,
-                                onRefresh = { refreshLyrics() },
+                        Box(
+                            Modifier
+                                .fillMaxSize()
+                                .clip(RoundedCornerShape(28.dp)),
+                        ) {
+                            LyricsBackdrop(
+                                track = track,
+                                accent = accent,
+                                blurRadius = blurRadius,
                                 modifier = Modifier.fillMaxSize(),
                             )
+                            Box(Modifier.fillMaxSize().padding(16.dp)) {
+                                LyricsPanel(
+                                    data = lyrics,
+                                    loading = lyricsLoading,
+                                    positionMs = lyricsPosition,
+                                    settings = settings,
+                                    onRefresh = { refreshLyrics() },
+                                    modifier = Modifier.fillMaxSize(),
+                                )
+                            }
                         }
                     }
                 }
