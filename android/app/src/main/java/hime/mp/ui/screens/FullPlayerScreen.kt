@@ -69,6 +69,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -77,14 +78,16 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.input.pointer.pointerInput
@@ -112,6 +115,7 @@ import hime.mp.ui.components.AlbumArt
 import hime.mp.ui.theme.AlbumThemeController
 import hime.mp.ui.theme.LocalHimeMotion
 import hime.mp.ui.theme.containerOf
+import hime.mp.util.ArtCache
 import hime.mp.util.formatDuration
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
@@ -574,6 +578,36 @@ private fun ModernSeekBar(
 }
 
 @Composable
+private fun BlurredArtwork(
+    track: Track?,
+    blurRadius: Dp,
+    modifier: Modifier = Modifier,
+) {
+    val bitmap by produceState<ImageBitmap?>(initialValue = null, key1 = track?.id) {
+        value = track?.let { ArtCache.cached(it) ?: ArtCache.load(it) }?.asImageBitmap()
+    }
+    val density = LocalDensity.current
+    val radiusPx = with(density) { blurRadius.toPx() }
+    val paint = remember(radiusPx) {
+        Paint().apply {
+            isFilterBitmap = true
+            maskFilter = BlurMaskFilter(radiusPx.coerceAtLeast(1f), BlurMaskFilter.Blur.NORMAL)
+        }
+    }
+    Canvas(modifier) {
+        val image = bitmap ?: return@Canvas
+        drawIntoCanvas { canvas ->
+            canvas.drawBitmap(
+                image.asAndroidBitmap(),
+                null,
+                RectF(0f, 0f, size.width, size.height),
+                paint,
+            )
+        }
+    }
+}
+
+@Composable
 private fun LyricsBackdrop(
     track: Track?,
     accent: Color,
@@ -582,13 +616,7 @@ private fun LyricsBackdrop(
 ) {
     Box(modifier.clip(RoundedCornerShape(28.dp))) {
         if (blurRadius > 0.dp) {
-            AlbumArt(
-                track,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .blur(blurRadius),
-                corner = 28.dp,
-            )
+            BlurredArtwork(track, blurRadius, Modifier.fillMaxSize())
         }
         Box(
             Modifier

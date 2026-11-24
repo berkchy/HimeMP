@@ -17,8 +17,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -59,12 +60,12 @@ fun MiniPlayer(onExpand: () -> Unit, progressStyle: String = "pill") {
         0f
     }
     Surface(
-        shape = MaterialTheme.shapes.medium,
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-        tonalElevation = 3.dp,
-        shadowElevation = 8.dp,
+        shape = RoundedCornerShape(20.dp),
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        tonalElevation = 1.dp,
+        shadowElevation = 2.dp,
         modifier = Modifier
-            .padding(horizontal = 8.dp, vertical = 4.dp)
+            .padding(horizontal = 12.dp, vertical = 4.dp)
             .fillMaxWidth()
             .clickable(onClick = onExpand)
             .pointerInput(Unit) {
@@ -123,7 +124,7 @@ fun MiniPlayer(onExpand: () -> Unit, progressStyle: String = "pill") {
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(if (progressStyle == "thin") 2.dp else 3.dp),
-                trackColor = MaterialTheme.colorScheme.surfaceVariant,
+                trackColor = MaterialTheme.colorScheme.secondaryContainer,
                 color = palette?.primary?.let { Color(it) } ?: MaterialTheme.colorScheme.primary,
             )
             Row(
@@ -136,6 +137,7 @@ fun MiniPlayer(onExpand: () -> Unit, progressStyle: String = "pill") {
                     track,
                     modifier = Modifier
                         .size(42.dp)
+                        .clip(RoundedCornerShape(12.dp))
                         .graphicsLayer { translationX = dragX * 0.35f },
                 )
                 Column(
@@ -157,7 +159,13 @@ fun MiniPlayer(onExpand: () -> Unit, progressStyle: String = "pill") {
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                IconButton(onClick = { PlaybackController.togglePlay() }) {
+                FilledIconButton(
+                    onClick = { PlaybackController.togglePlay() },
+                    colors = IconButtonDefaults.filledIconButtonColors(
+                        containerColor = MaterialTheme.colorScheme.primaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    ),
+                ) {
                     AnimatedContent(
                         targetState = state.playing,
                         transitionSpec = {

@@ -23,8 +23,6 @@ import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarHost
@@ -55,7 +53,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import hime.mp.core.Track
 import hime.mp.data.PlaybackController
+import hime.mp.ui.components.BottomNavItem
 import hime.mp.ui.components.MiniPlayer
+import hime.mp.ui.components.ModernBottomBar
 import hime.mp.ui.screens.FullPlayerScreen
 import hime.mp.ui.screens.LibraryScreen
 import hime.mp.ui.screens.PlaylistsScreen
@@ -177,32 +177,23 @@ fun MainScreen() {
                             progressStyle = settingsMap["progressStyle"] ?: "pill",
                         )
                     }
-                    NavigationBar(
-                        containerColor = MaterialTheme.colorScheme.surfaceContainer,
-                        tonalElevation = 3.dp,
-                    ) {
-                        val items = listOf(
-                            Triple(0, Icons.Default.Home, "Library"),
-                            Triple(1, Icons.Default.List, "Playlists"),
-                            Triple(2, Icons.Default.Settings, "Settings"),
-                        )
-                        items.forEach { (page, icon, label) ->
-                            NavigationBarItem(
-                                selected = selectedTab == page,
-                                onClick = {
-                                    fullPlayer = false
-                                    goToPage(page)
-                                    if (page == 1) {
-                                        playlists.refresh()
-                                    } else {
-                                        selectedPlaylist = null
-                                    }
-                                },
-                                icon = { Icon(icon, contentDescription = label) },
-                                label = { Text(label) },
-                            )
-                        }
-                    }
+                    ModernBottomBar(
+                        items = listOf(
+                            BottomNavItem(Icons.Default.Home, "Library"),
+                            BottomNavItem(Icons.Default.List, "Playlists"),
+                            BottomNavItem(Icons.Default.Settings, "Settings"),
+                        ),
+                        selected = selectedTab,
+                        onSelect = { page ->
+                            fullPlayer = false
+                            goToPage(page)
+                            if (page == 1) {
+                                playlists.refresh()
+                            } else {
+                                selectedPlaylist = null
+                            }
+                        },
+                    )
                 }
             },
         ) { padding ->
