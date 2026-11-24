@@ -106,6 +106,7 @@ import hime.mp.data.MusicRepository
 import hime.mp.data.PlaybackController
 import hime.mp.lyrics.LyricLine
 import hime.mp.lyrics.LyricsData
+import hime.mp.lyrics.LyricsKind
 import hime.mp.lyrics.LyricsManager
 import hime.mp.ui.components.AlbumArt
 import hime.mp.ui.theme.AlbumThemeController
