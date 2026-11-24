@@ -96,6 +96,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -633,7 +634,7 @@ private fun LyricsPanel(
         Box(modifier, contentAlignment = Alignment.Center) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(
-                    if (data?.source == "error") "Lyrics unavailable" else "Lyrics not found",
+                    if (data?.kind == LyricsKind.ERROR) "Lyrics unavailable" else "Lyrics not found",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -688,14 +689,21 @@ private fun LyricsPanel(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.onSizeChanged { headerHeightPx = it.height },
             ) {
+                val status = when (data.kind) {
+                    LyricsKind.SYNCED -> "Synced"
+                    LyricsKind.PLAIN -> "Plain only"
+                    else -> data.source
+                }
                 Text(
-                    "Lyrics · ${data.source}",
+                    "Lyrics · $status · ${data.source}",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.weight(1f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
                 IconButton(onClick = onRefresh) {
-                    Icon(Icons.Default.Refresh, contentDescription = "Refresh lyrics")
+                    Icon(Icons.Default.Refresh, contentDescription = "Refetch lyrics")
                 }
             }
             LazyColumn(

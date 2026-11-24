@@ -4,9 +4,35 @@ data class LyricWord(val text: String, val timeMs: Long, val endMs: Long)
 
 data class LyricLine(val timeMs: Long, val text: String, val words: List<LyricWord> = emptyList())
 
-data class LyricsData(val source: String, val lines: List<LyricLine>) {
-    val synced: Boolean get() = lines.any { it.timeMs >= 0 }
+enum class LyricsKind { SYNCED, PLAIN, NONE, ERROR }
+
+data class LyricsData(
+    val source: String,
+    val lines: List<LyricLine>,
+    val kind: LyricsKind = when {
+        lines.isEmpty() -> LyricsKind.NONE
+        lines.any { it.timeMs >= 0 } -> LyricsKind.SYNCED
+        else -> LyricsKind.PLAIN
+    },
+    val confidence: Float = 0f,
+) {
+    val synced: Boolean get() = kind == LyricsKind.SYNCED || lines.any { it.timeMs >= 0 }
+    val hasLyrics: Boolean get() = lines.isNotEmpty()
 }
+
+data class LyricsQuery(
+    val title: String,
+    val artist: String,
+    val album: String,
+    val durationSec: Long,
+    val path: String,
+    val externalPath: String = "",
+)
+
+data class LyricsCandidate(
+    val data: LyricsData,
+    val confidence: Float,
+)
 
 private val lrcTime = Regex("""\[(\d{1,3}):(\d{2})(?:[.:](\d{1,3}))?\]""")
 private val whitespace = Regex("""[ \t]+""")
@@ -34,6 +60,17 @@ fun parsePlainLyrics(input: String): List<LyricLine> =
         .filter { it.isNotEmpty() }
         .map { LyricLine(-1L, it) }
         .toList()
+
+fun parseLyricsText(input: String): LyricsData {
+    val synced = parseLrc(input)
+    if (synced.isNotEmpty()) return LyricsData("Local", synced, LyricsKind.SYNCED, 0.95f)
+    val plain = parsePlainLyrics(input)
+    return if (plain.isEmpty()) {
+        LyricsData("Local", emptyList(), LyricsKind.NONE, 0f)
+    } else {
+        LyricsData("Local", plain, LyricsKind.PLAIN, 0.7f)
+    }
+}
 
 fun parseTtml(input: String): List<LyricLine> {
     val lines = mutableListOf<LyricLine>()
