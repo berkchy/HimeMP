@@ -120,10 +120,19 @@ object LyricsManager {
         val array = cached.optJSONArray("lines") ?: return null
         val lines = (0 until array.length()).mapNotNull { index ->
             val item = array.optJSONArray(index) ?: return@mapNotNull null
-            LyricLine(item.optLong(0, -1L), item.optString(1))
+            val wordArray = item.optJSONArray(2)
+            val words = if (wordArray != null) {
+                (0 until wordArray.length()).mapNotNull { wordIndex ->
+                    val word = wordArray.optJSONArray(wordIndex) ?: return@mapNotNull null
+                    LyricWord(word.optString(0), word.optLong(1, -1L), word.optLong(2, -1L))
+                }
+            } else {
+                emptyList()
+            }
+            LyricLine(item.optLong(0, -1L), item.optString(1), words)
         }.filter { it.text.isNotBlank() }
         if (lines.isEmpty()) return null
-        return LyricsData(cached.optString("source", "cache"), lines)
+        return LyricsData(cached.optString("source", "cache"), distributeWordTiming(lines))
     }
 
     private fun writeCache(file: File, data: LyricsData, cacheMiss: Boolean = data.lines.isNotEmpty()): LyricsData {
@@ -132,7 +141,11 @@ object LyricsManager {
             file.parentFile?.mkdirs()
             val array = JSONArray()
             data.lines.forEach { line ->
-                array.put(JSONArray().put(line.timeMs).put(line.text))
+                val words = JSONArray()
+                line.words.forEach { word ->
+                    words.put(JSONArray().put(word.text).put(word.timeMs).put(word.endMs))
+                }
+                array.put(JSONArray().put(line.timeMs).put(line.text).put(words))
             }
             val json = JSONObject()
                 .put("miss", data.lines.isEmpty())

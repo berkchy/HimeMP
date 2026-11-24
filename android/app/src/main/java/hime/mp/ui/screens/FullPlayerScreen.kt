@@ -51,7 +51,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -72,13 +71,16 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -87,6 +89,7 @@ import hime.mp.core.PlaybackState
 import hime.mp.core.Track
 import hime.mp.data.MusicRepository
 import hime.mp.data.PlaybackController
+import hime.mp.lyrics.LyricLine
 import hime.mp.lyrics.LyricsData
 import hime.mp.lyrics.LyricsManager
 import hime.mp.ui.components.AlbumArt
@@ -572,93 +575,103 @@ private fun LyricsPanel(
     }
 
     val active = data.lines.indexOfLast { it.timeMs in 0..positionMs }.coerceAtLeast(0)
-    val nextIndex = data.lines.indexOfFirst { it.timeMs > positionMs }
-    val nextTime = data.lines.getOrNull(nextIndex)?.timeMs
-    val previousTime = if (nextIndex > 0) data.lines[nextIndex - 1].timeMs else 0L
-    val gapLength = (nextTime ?: -1L) - previousTime
-    val inGap = data.synced && gapLength > 5_000L && positionMs > previousTime + 1_500L
-    val gapFraction = if (inGap) ((positionMs - previousTime).toFloat() / gapLength).coerceIn(0f, 1f) else 0f
     val autoScroll = settings["lyricsAutoScroll"]?.toBoolean() != false
     val seekEnabled = settings["lyricsSeek"]?.toBoolean() != false
 
     BoxWithConstraints(modifier) {
         val halfHeight = maxHeight / 2
         val centerOffset = with(LocalDensity.current) { halfHeight.toPx().toInt() }
-        LaunchedEffect(active, inGap, autoScroll) {
-            if (autoScroll && !inGap) runCatching { listState.animateScrollToItem(active, centerOffset) }
+        LaunchedEffect(active, autoScroll) {
+            if (autoScroll) runCatching { listState.animateScrollToItem(active, centerOffset) }
         }
-        if (inGap) {
-            Column(
-                modifier = Modifier.fillMaxSize(),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center,
-            ) {
-                CircularProgressIndicator(progress = { gapFraction })
-                Spacer(Modifier.height(12.dp))
+        Column(Modifier.fillMaxSize()) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    "Instrumental",
-                    style = MaterialTheme.typography.titleMedium,
+                    "Lyrics · ${data.source}",
+                    style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.weight(1f),
                 )
-                Spacer(Modifier.height(8.dp))
-                LinearProgressIndicator(
-                    progress = { gapFraction },
-                    modifier = Modifier.fillMaxWidth(0.5f),
-                )
-            }
-        } else {
-            Column(Modifier.fillMaxSize()) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        "Lyrics · ${data.source}",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.weight(1f),
-                    )
-                    IconButton(onClick = onRefresh) {
-                        Icon(Icons.Default.Refresh, contentDescription = "Refresh lyrics")
-                    }
+                IconButton(onClick = onRefresh) {
+                    Icon(Icons.Default.Refresh, contentDescription = "Refresh lyrics")
                 }
-                LazyColumn(
-                    modifier = Modifier.fillMaxWidth().weight(1f),
-                    state = listState,
-                    horizontalAlignment = horizontalAlignment,
-                    contentPadding = PaddingValues(vertical = (halfHeight - 24.dp).coerceAtLeast(0.dp)),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    itemsIndexed(data.lines) { index, line ->
-                        val isActive = index == active && data.synced
-                        val style = if (isActive) {
-                            MaterialTheme.typography.titleLarge.copy(
-                                fontSize = baseSize * 1.18f,
-                                fontWeight = FontWeight.Bold,
-                                textAlign = textAlign,
-                            )
-                        } else {
-                            MaterialTheme.typography.bodyLarge.copy(
-                                fontSize = baseSize,
-                                textAlign = textAlign,
-                            )
+            }
+            LazyColumn(
+                modifier = Modifier.fillMaxWidth().weight(1f),
+                state = listState,
+                horizontalAlignment = horizontalAlignment,
+                contentPadding = PaddingValues(vertical = (halfHeight - 24.dp).coerceAtLeast(0.dp)),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                itemsIndexed(data.lines) { index, line ->
+                    val isActive = index == active && data.synced
+                    val style = if (isActive) {
+                        MaterialTheme.typography.titleLarge.copy(
+                            fontSize = baseSize * 1.18f,
+                            textAlign = textAlign,
+                        )
+                    } else {
+                        MaterialTheme.typography.bodyLarge.copy(
+                            fontSize = baseSize,
+                            textAlign = textAlign,
+                        )
+                    }
+                    val lineModifier = Modifier
+                        .fillMaxWidth()
+                        .alpha(if (isActive) 1f else 0.55f)
+                        .graphicsLayer {
+                            scaleX = if (isActive) 1.05f else 1f
+                            scaleY = if (isActive) 1.05f else 1f
                         }
+                        .clickable(enabled = seekEnabled && line.timeMs >= 0) {
+                            PlaybackController.seek(line.timeMs)
+                        }
+                    if (isActive && line.words.isNotEmpty()) {
                         Text(
-                            line.text,
+                            text = karaokeText(line, positionMs, MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.onSurfaceVariant),
+                            style = style,
+                            modifier = lineModifier,
+                        )
+                    } else {
+                        Text(
+                            text = line.text,
                             style = style,
                             color = if (isActive) MaterialTheme.colorScheme.primary
                             else MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .alpha(if (isActive) 1f else 0.55f)
-                                .graphicsLayer {
-                                    scaleX = if (isActive) 1.05f else 1f
-                                    scaleY = if (isActive) 1.05f else 1f
-                                }
-                                .clickable(enabled = seekEnabled && line.timeMs >= 0) {
-                                    PlaybackController.seek(line.timeMs)
-                                },
+                            modifier = lineModifier,
                         )
                     }
                 }
             }
+        }
+    }
+}
+
+private fun karaokeText(
+    line: LyricLine,
+    positionMs: Long,
+    activeColor: Color,
+    dimColor: Color,
+) = buildAnnotatedString {
+    line.words.forEach { word ->
+        val duration = word.endMs - word.timeMs
+        val glow = when {
+            positionMs < word.timeMs -> 0f
+            duration <= 0L -> 1f
+            else -> ((positionMs - word.timeMs).toFloat() / duration).coerceIn(0f, 1f)
+        }
+        withStyle(
+            SpanStyle(
+                color = lerp(dimColor, activeColor, glow),
+                shadow = if (glow > 0f) {
+                    Shadow(blurRadius = 12f * glow, color = activeColor.copy(alpha = 0.65f * glow))
+                } else {
+                    Shadow.None
+                },
+                fontWeight = if (glow > 0.45f) FontWeight.Bold else FontWeight.Normal,
+            ),
+        ) {
+            append(word.text)
         }
     }
 }
