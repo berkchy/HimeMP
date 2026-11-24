@@ -11,6 +11,7 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
@@ -66,10 +67,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
@@ -550,6 +553,7 @@ private fun LyricsPanel(
     modifier: Modifier = Modifier,
 ) {
     val listState = rememberLazyListState()
+    var lastActive by remember { mutableStateOf(-1) }
     val horizontalAlignment = when (settings["lyricsAlignment"]) {
         "start" -> Alignment.Start
         "end" -> Alignment.End
@@ -590,11 +594,29 @@ private fun LyricsPanel(
     val autoScroll = settings["lyricsAutoScroll"]?.toBoolean() != false
     val seekEnabled = settings["lyricsSeek"]?.toBoolean() != false
 
-    BoxWithConstraints(modifier) {
+    BoxWithConstraints(modifier.clipToBounds()) {
         val halfHeight = maxHeight / 2
-        val centerOffset = with(LocalDensity.current) { halfHeight.toPx().toInt() }
-        LaunchedEffect(active, autoScroll) {
-            if (autoScroll) runCatching { listState.animateScrollToItem(active, centerOffset) }
+        LaunchedEffect(active, autoScroll, data.lines, maxHeight) {
+            if (!autoScroll || data.lines.isEmpty()) return@LaunchedEffect
+            var item = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == active }
+            if (item == null) {
+                runCatching { listState.scrollToItem(active) }
+                withFrameNanos {}
+                withFrameNanos {}
+                item = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == active }
+            }
+            val info = item ?: return@LaunchedEffect
+            val anchor = listState.layoutInfo.viewportSize.height / 2f
+            val center = info.offset + info.size / 2f
+            val offset = center - anchor
+            if (abs(offset) > 1f) {
+                if (lastActive == -1 || abs(active - lastActive) > 1 || abs(offset) > anchor) {
+                    listState.scrollBy(offset)
+                } else {
+                    runCatching { listState.animateScrollBy(offset, tween(240)) }
+                }
+            }
+            lastActive = active
         }
         Column(Modifier.fillMaxSize()) {
             Row(verticalAlignment = Alignment.CenterVertically) {
