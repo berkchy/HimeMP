@@ -34,7 +34,7 @@ private object LyricsHttp {
         repeat(2) { attempt ->
             val builder = Request.Builder()
                 .url(url)
-                .header("User-Agent", "HimeMP/0.5.27 (Android)")
+                .header("User-Agent", "HimeMP/0.5.28 (Android)")
             headers.forEach { (key, value) -> builder.header(key, value) }
             val body = runCatching {
                 client.newCall(builder.build()).execute().use { response ->
@@ -89,8 +89,10 @@ fun relaxedLyricsQuery(query: LyricsQuery): LyricsQuery {
     return query.copy(title = clean(query.title), artist = clean(query.artist), album = clean(query.album))
 }
 
-private fun String.cleanEmbedded(): String = map { char ->
-    if (char.code in 32..126 || char == '\n' || char == '\r' || char == '\t') char else ' '
+private fun String.cleanEmbedded(): String = buildString {
+    for (char in this@cleanEmbedded) {
+        append(if (char.code in 32..126 || char == '\n' || char == '\r' || char == '\t') char else ' ')
+    }
 }.replace(Regex(""" {3,}"""), " ").trim()
 
 private fun extractEmbedded(raw: String): String? {
