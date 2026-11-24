@@ -2,11 +2,16 @@ package hime.mp.ui.screens
 
 import android.content.Context
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.Canvas
@@ -72,6 +77,7 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.scale
@@ -90,6 +96,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import hime.mp.core.PlaybackState
@@ -273,22 +280,40 @@ fun FullPlayerScreen(
                     .clip(RoundedCornerShape(28.dp)),
             ) {
                 AlbumArt(track, modifier = Modifier.fillMaxSize(), corner = 28.dp)
-                if (showLyrics) {
-                    val accent = palette?.primary?.let { Color(it) } ?: MaterialTheme.colorScheme.primary
+                val accent = palette?.primary?.let { Color(it) } ?: MaterialTheme.colorScheme.primary
+                val blurEnabled = settings["lyricsBlur"]?.toBoolean() ?: true
+                val blurLevel = settings["lyricsBlurIntensity"]?.toIntOrNull()?.coerceIn(0, 4) ?: 2
+                val blurRadius = if (blurEnabled) (4 + blurLevel * 6).dp else 0.dp
+                AnimatedVisibility(
+                    visible = showLyrics,
+                    enter = fadeIn(tween(220)) +
+                        slideInVertically(initialOffsetY = { it / 10 }) +
+                        scaleIn(initialScale = 0.98f),
+                    exit = fadeOut(tween(180)) +
+                        slideOutVertically(targetOffsetY = { it / 10 }) +
+                        scaleOut(targetScale = 0.98f),
+                ) {
                     Box(
                         Modifier
                             .fillMaxSize()
-                            .background(lerp(Color.Black, accent, 0.18f).copy(alpha = 0.70f))
-                            .padding(16.dp),
+                            .clip(RoundedCornerShape(28.dp)),
                     ) {
-                        LyricsPanel(
-                            data = lyrics,
-                            loading = lyricsLoading,
-                            positionMs = lyricsPosition,
-                            settings = settings,
-                            onRefresh = { refreshLyrics() },
+                        LyricsBackdrop(
+                            track = track,
+                            accent = accent,
+                            blurRadius = blurRadius,
                             modifier = Modifier.fillMaxSize(),
                         )
+                        Box(Modifier.fillMaxSize().padding(16.dp)) {
+                            LyricsPanel(
+                                data = lyrics,
+                                loading = lyricsLoading,
+                                positionMs = lyricsPosition,
+                                settings = settings,
+                                onRefresh = { refreshLyrics() },
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                        }
                     }
                 }
             }
@@ -541,6 +566,31 @@ private fun ModernSeekBar(
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun LyricsBackdrop(
+    track: Track?,
+    accent: Color,
+    blurRadius: Dp,
+    modifier: Modifier = Modifier,
+) {
+    Box(modifier.clip(RoundedCornerShape(28.dp))) {
+        if (blurRadius > 0.dp) {
+            AlbumArt(
+                track,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .blur(blurRadius),
+                corner = 28.dp,
+            )
+        }
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(lerp(Color.Black, accent, 0.18f).copy(alpha = 0.72f)),
+        )
     }
 }
 

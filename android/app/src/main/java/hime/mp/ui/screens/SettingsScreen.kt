@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -47,6 +48,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -67,6 +69,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import kotlin.math.roundToInt
 import hime.mp.R
 import hime.mp.core.PlaybackState
 import hime.mp.core.Track
@@ -268,6 +271,25 @@ fun SettingsScreen(viewModel: SettingsViewModel) {
                     ),
                     leadingIcon = Icons.Default.Update,
                     onChange = { viewModel.setSetting("lyricsSize", it) },
+                )
+                SettingsDivider()
+                SettingsSwitchRow(
+                    label = "Background blur",
+                    description = "Blur album art behind lyrics",
+                    leadingIcon = Icons.Default.AutoAwesome,
+                    checked = settings["lyricsBlur"]?.toBoolean() ?: true,
+                    onChange = { viewModel.setSetting("lyricsBlur", it.toString()) },
+                )
+                SettingsDivider()
+                SettingsSliderRow(
+                    label = "Blur intensity",
+                    description = "Subtle to strong",
+                    value = (settings["lyricsBlurIntensity"]?.toIntOrNull()?.coerceIn(0, 4) ?: 2).toFloat(),
+                    valueRange = 0f..4f,
+                    steps = 3,
+                    onChange = {
+                        viewModel.setSetting("lyricsBlurIntensity", it.roundToInt().toString())
+                    },
                 )
                 SettingsDivider()
                 SettingsSwitchRow(
@@ -603,7 +625,7 @@ private fun SettingsDropdownRow(
 }
 
 @Composable
-private fun SettingsActionButton(
+private fun RowScope.SettingsActionButton(
     icon: ImageVector,
     label: String,
     onClick: () -> Unit,
@@ -616,6 +638,45 @@ private fun SettingsActionButton(
         Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp))
         Spacer(Modifier.width(6.dp))
         Text(label, style = MaterialTheme.typography.labelMedium, maxLines = 1)
+    }
+}
+
+@Composable
+private fun SettingsSliderRow(
+    label: String,
+    description: String? = null,
+    value: Float,
+    valueRange: ClosedFloatingPointRange<Float>,
+    steps: Int,
+    onChange: (Float) -> Unit,
+) {
+    var current by remember(value) { mutableStateOf(value) }
+    Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+        Row(modifier = Modifier.fillMaxWidth()) {
+            Text(label, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+            Text(
+                "Level ${current.roundToInt()}",
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.primary,
+            )
+        }
+        if (description != null) {
+            Spacer(Modifier.height(2.dp))
+            Text(
+                description,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Spacer(Modifier.height(8.dp))
+        Slider(
+            value = current,
+            onValueChange = { current = it },
+            onValueChangeFinished = { onChange(current) },
+            valueRange = valueRange,
+            steps = steps,
+            modifier = Modifier.fillMaxWidth(),
+        )
     }
 }
 
