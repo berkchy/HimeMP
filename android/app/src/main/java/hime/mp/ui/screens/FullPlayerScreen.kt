@@ -536,9 +536,9 @@ private fun LyricsPanel(
 ) {
     val listState = rememberLazyListState()
     val horizontalAlignment = when (settings["lyricsAlignment"]) {
-        "start" -> Alignment.Horizontal.Start
-        "end" -> Alignment.Horizontal.End
-        else -> Alignment.Horizontal.CenterHorizontally
+        "start" -> Alignment.Start
+        "end" -> Alignment.End
+        else -> Alignment.CenterHorizontally
     }
     val textAlign = when (settings["lyricsAlignment"]) {
         "start" -> TextAlign.Start
@@ -648,7 +648,10 @@ private fun LyricsPanel(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .alpha(if (isActive) 1f else 0.55f)
-                                .graphicsLayer { scale = if (isActive) 1.05f else 1f }
+                                .graphicsLayer {
+                                    scaleX = if (isActive) 1.05f else 1f
+                                    scaleY = if (isActive) 1.05f else 1f
+                                }
                                 .clickable(enabled = seekEnabled && line.timeMs >= 0) {
                                     PlaybackController.seek(line.timeMs)
                                 },
