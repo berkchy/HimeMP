@@ -32,11 +32,13 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import hime.mp.data.PlaybackController
+import hime.mp.ui.theme.AlbumThemeController
 import hime.mp.ui.theme.LocalHimeMotion
 import kotlinx.coroutines.launch
 import kotlin.math.abs
@@ -46,6 +48,7 @@ fun MiniPlayer(onExpand: () -> Unit) {
     val state by PlaybackController.state.collectAsState()
     val track by PlaybackController.currentTrack.collectAsState()
     val motion = LocalHimeMotion.current
+    val palette by AlbumThemeController.palette.collectAsState()
     var dragX by remember { mutableStateOf(0f) }
     val scope = rememberCoroutineScope()
     if (track == null) return
@@ -121,6 +124,7 @@ fun MiniPlayer(onExpand: () -> Unit) {
                     .fillMaxWidth()
                     .height(2.dp),
                 trackColor = MaterialTheme.colorScheme.surfaceVariant,
+                color = palette?.primary?.let { Color(it) } ?: MaterialTheme.colorScheme.primary,
             )
             Row(
                 modifier = Modifier

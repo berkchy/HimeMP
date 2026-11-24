@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import hime.mp.core.Playlist
 import hime.mp.core.Track
+import hime.mp.data.LibraryChangeNotifier
 import hime.mp.data.MusicRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -22,6 +23,9 @@ class PlaylistsViewModel : ViewModel() {
 
     init {
         refresh()
+        viewModelScope.launch {
+            LibraryChangeNotifier.changes.collect { refresh() }
+        }
     }
 
     fun refresh() {

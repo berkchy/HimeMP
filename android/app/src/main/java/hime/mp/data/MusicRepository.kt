@@ -18,11 +18,14 @@ object MusicRepository {
 
     suspend fun setAllowedFolders(folders: List<String>) = io {
         NativeBridge.setAllowedFolders(folders.toTypedArray())
+        LibraryChangeNotifier.notifyChanged()
         Unit
     }
 
     suspend fun scan(incremental: Boolean): ScanReport = io {
-        ScanReport.from(NativeBridge.scan(incremental))
+        val report = ScanReport.from(NativeBridge.scan(incremental))
+        LibraryChangeNotifier.notifyChanged()
+        report
     }
 
     suspend fun tracks(): List<Track> = io { Track.list(NativeBridge.getTracks()) }
@@ -70,9 +73,11 @@ object MusicRepository {
     }
 
     suspend fun removeFromLibrary(ids: List<String>): Int = io {
-        runCatching {
+        val removed = runCatching {
             org.json.JSONObject(NativeBridge.removeFromLibrary(ids.toTypedArray())).optInt("removed")
         }.getOrDefault(0)
+        if (removed > 0) LibraryChangeNotifier.notifyChanged()
+        removed
     }
 
     suspend fun favorites(): List<Track> = io { Track.list(NativeBridge.getFavorites()) }

@@ -31,6 +31,7 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -43,6 +44,9 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.palette.graphics.Palette
 import kotlinx.coroutines.Dispatchers
@@ -137,6 +141,19 @@ fun MainScreen() {
         }
     }
 
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var hasResumed by remember { mutableStateOf(false) }
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                if (hasResumed) settings.rescan(incremental = true)
+                hasResumed = true
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
     BackHandler(enabled = fullPlayer) { fullPlayer = false }
     BackHandler(enabled = !fullPlayer && selectedPlaylist != null) { selectedPlaylist = null }
     BackHandler(enabled = !fullPlayer && selectedPlaylist == null && pagerState.currentPage != 0) {
@@ -146,6 +163,8 @@ fun MainScreen() {
     HimeTheme(
         themeMode = settingsMap["theme"] ?: "system",
         dynamicColor = settingsMap["dynamicColor"]?.toBoolean() ?: true,
+        amoled = settingsMap["amoled"]?.toBoolean() ?: false,
+        colorSource = settingsMap["colorSource"] ?: "adaptive",
         reducedMotion = settingsMap["reducedMotion"]?.toBoolean() ?: false,
     ) {
         Scaffold(

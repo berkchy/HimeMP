@@ -170,10 +170,26 @@ fun SettingsScreen(viewModel: SettingsViewModel) {
                     }
                 }
                 Spacer(Modifier.height(12.dp))
+                SettingDropdown(
+                    label = "Color source",
+                    value = settings["colorSource"] ?: "adaptive",
+                    options = listOf(
+                        "adaptive" to "Adaptive",
+                        "album" to "Album",
+                        "system" to "System",
+                        "classic" to "Classic",
+                    ),
+                    onChange = { viewModel.setSetting("colorSource", it) },
+                )
                 SettingSwitch(
                     label = "Dynamic color",
                     checked = settings["dynamicColor"]?.toBoolean() ?: true,
                     onChange = { viewModel.setSetting("dynamicColor", it.toString()) },
+                )
+                SettingSwitch(
+                    label = "AMOLED dark",
+                    checked = settings["amoled"]?.toBoolean() ?: false,
+                    onChange = { viewModel.setSetting("amoled", it.toString()) },
                 )
                 SettingSwitch(
                     label = "Reduced motion",

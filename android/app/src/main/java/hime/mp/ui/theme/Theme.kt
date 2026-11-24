@@ -27,6 +27,8 @@ val HimeShapes = Shapes(
 fun HimeTheme(
     themeMode: String = "system",
     dynamicColor: Boolean = true,
+    amoled: Boolean = false,
+    colorSource: String = "adaptive",
     reducedMotion: Boolean = false,
     content: @Composable () -> Unit,
 ) {
@@ -37,9 +39,17 @@ fun HimeTheme(
         "light" -> false
         else -> isSystemInDarkTheme()
     }
-    val seed = if (dynamicColor) palette?.primary ?: 0 else 0xFF6750A4.toInt()
-    val base = schemeForSeed(seed, dark, false, context)
-    val scheme = if (dynamicColor && palette != null) {
+    val source = colorSource.ifBlank { "adaptive" }
+    val useAlbum = source == "album" || (source == "adaptive" && dynamicColor && palette != null)
+    val seed = when {
+        source == "system" -> 0
+        source == "classic" -> 0xFF6750A4.toInt()
+        useAlbum -> palette?.primary ?: 0
+        dynamicColor -> palette?.primary ?: 0
+        else -> 0xFF6750A4.toInt()
+    }
+    val base = schemeForSeed(seed, dark, amoled, context)
+    val scheme = if (useAlbum && palette != null) {
         val secondary = Color(palette.secondary)
         val tertiary = Color(palette.tertiary)
         val secondaryContainer = containerOf(secondary, dark)

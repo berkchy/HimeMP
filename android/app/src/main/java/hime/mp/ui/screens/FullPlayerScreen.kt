@@ -13,6 +13,7 @@ import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -20,11 +21,14 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Favorite
@@ -42,8 +46,8 @@ import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -58,18 +62,25 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import hime.mp.core.PlaybackState
 import hime.mp.core.Track
 import hime.mp.data.MusicRepository
 import hime.mp.data.PlaybackController
+import hime.mp.lyrics.LyricsData
+import hime.mp.lyrics.LyricsManager
 import hime.mp.ui.components.AlbumArt
+import hime.mp.ui.theme.AlbumThemeController
 import hime.mp.ui.theme.LocalHimeMotion
 import hime.mp.ui.theme.containerOf
 import hime.mp.util.formatDuration
@@ -90,10 +101,21 @@ fun FullPlayerScreen(
     var scrubbing by remember { mutableStateOf(false) }
     var scrub by remember { mutableStateOf(0f) }
     var showQueue by remember { mutableStateOf(false) }
+    var showLyrics by remember { mutableStateOf(false) }
+    var lyrics by remember { mutableStateOf<LyricsData?>(null) }
+    var lyricsLoading by remember { mutableStateOf(false) }
     var artWidth by remember { mutableStateOf(0) }
     var dragOffset by remember { mutableStateOf(0f) }
     val scope = rememberCoroutineScope()
 
+    LaunchedEffect(track?.id) {
+        lyrics = null
+        lyricsLoading = track != null
+        if (track != null) {
+            lyrics = LyricsManager.load(track)
+            lyricsLoading = false
+        }
+    }
     LaunchedEffect(Unit) { PlaybackController.refreshState() }
     LaunchedEffect(state.positionMs, state.durationMs, scrubbing) {
         if (!scrubbing && state.durationMs > 0) {
@@ -135,6 +157,9 @@ fun FullPlayerScreen(
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                }
+                TextButton(onClick = { showLyrics = !showLyrics }) {
+                    Text(if (showLyrics) "Hide lyrics" else "Lyrics")
                 }
                 IconButton(onClick = { showQueue = true }) {
                     Icon(Icons.Default.List, contentDescription = "Queue")
@@ -239,10 +264,10 @@ fun FullPlayerScreen(
         }
 
         Spacer(Modifier.height(8.dp))
-        Slider(
-            value = fraction,
-            onValueChange = { scrubbing = true; scrub = it },
-            onValueChangeFinished = {
+        ModernSeekBar(
+            fraction = fraction,
+            onScrub = { scrubbing = true; scrub = it },
+            onScrubFinish = {
                 PlaybackController.seek((scrub * state.durationMs).toLong())
                 scrubbing = false
             },
@@ -253,7 +278,12 @@ fun FullPlayerScreen(
             Text(formatDuration(state.durationMs), style = MaterialTheme.typography.bodyMedium)
         }
 
-        Spacer(Modifier.weight(1f))
+        if (showLyrics) {
+            Spacer(Modifier.height(8.dp))
+            LyricsPanel(lyrics, lyricsLoading, shownPosition)
+        } else {
+            Spacer(Modifier.weight(1f))
+        }
         Surface(
             shape = MaterialTheme.shapes.extraLarge,
             color = containerOf(MaterialTheme.colorScheme.secondary, dark = true),
@@ -317,6 +347,117 @@ fun FullPlayerScreen(
     if (showQueue) {
         ModalBottomSheet(onDismissRequest = { showQueue = false }) {
             QueueSheet(state = state)
+        }
+    }
+}
+
+@Composable
+private fun ModernSeekBar(
+    fraction: Float,
+    onScrub: (Float) -> Unit,
+    onScrubFinish: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val palette by AlbumThemeController.palette.collectAsState()
+    val accent = palette?.primary?.let { Color(it) } ?: MaterialTheme.colorScheme.primary
+    var widthPx by remember { mutableStateOf(1) }
+    val density = LocalDensity.current
+    Box(
+        modifier = modifier
+            .height(28.dp)
+            .onSizeChanged { widthPx = it.width.coerceAtLeast(1) }
+            .pointerInput(Unit) {
+                var active = false
+                detectHorizontalDragGestures(
+                    onDragStart = { start ->
+                        active = true
+                        onScrub((start.x / size.width.coerceAtLeast(1)).coerceIn(0f, 1f))
+                    },
+                    onHorizontalDrag = { change, _ ->
+                        onScrub((change.position.x / size.width.coerceAtLeast(1)).coerceIn(0f, 1f))
+                        change.consume()
+                    },
+                    onDragEnd = {
+                        if (active) onScrubFinish()
+                        active = false
+                    },
+                    onDragCancel = {
+                        if (active) onScrubFinish()
+                        active = false
+                    },
+                )
+            },
+    ) {
+        Box(
+            Modifier
+                .align(Alignment.CenterStart)
+                .fillMaxWidth()
+                .height(6.dp)
+                .clip(RoundedCornerShape(3.dp))
+                .background(MaterialTheme.colorScheme.surfaceContainerHighest),
+        )
+        Box(
+            Modifier
+                .align(Alignment.CenterStart)
+                .fillMaxWidth(fraction)
+                .height(6.dp)
+                .clip(RoundedCornerShape(3.dp))
+                .background(accent),
+        )
+        Box(
+            Modifier
+                .align(Alignment.CenterStart)
+                .offset(x = with(density) { (widthPx * fraction).toDp() - 9.dp })
+                .size(18.dp)
+                .clip(CircleShape)
+                .background(accent),
+        )
+    }
+}
+
+@Composable
+private fun LyricsPanel(data: LyricsData?, loading: Boolean, positionMs: Long) {
+    val listState = rememberLazyListState()
+    if (loading) {
+        Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+            CircularProgressIndicator()
+        }
+        return
+    }
+    if (data == null || data.lines.isEmpty()) {
+        Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+            Text(
+                "Lyrics not found",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        return
+    }
+    val active = data.lines.indexOfLast { it.timeMs in 0..positionMs }.coerceAtLeast(0)
+    LaunchedEffect(active) {
+        runCatching { listState.animateScrollToItem(active, -120) }
+    }
+    LazyColumn(
+        modifier = Modifier.fillMaxWidth().weight(1f),
+        state = listState,
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        itemsIndexed(data.lines) { index, line ->
+            Text(
+                line.text,
+                style = if (index == active && data.synced) {
+                    MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                } else {
+                    MaterialTheme.typography.bodyLarge
+                },
+                color = if (index == active && data.synced) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                },
+                modifier = Modifier.fillMaxWidth(),
+            )
         }
     }
 }

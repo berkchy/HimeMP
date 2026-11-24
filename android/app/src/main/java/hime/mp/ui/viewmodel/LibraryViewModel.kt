@@ -6,6 +6,7 @@ import hime.mp.core.Album
 import hime.mp.core.Artist
 import hime.mp.core.FolderInfo
 import hime.mp.core.Track
+import hime.mp.data.LibraryChangeNotifier
 import hime.mp.data.MusicRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -30,6 +31,9 @@ class LibraryViewModel : ViewModel() {
 
     init {
         refresh()
+        viewModelScope.launch {
+            LibraryChangeNotifier.changes.collect { refresh() }
+        }
     }
 
     fun refresh() {
