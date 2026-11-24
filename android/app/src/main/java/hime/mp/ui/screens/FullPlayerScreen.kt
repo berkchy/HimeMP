@@ -9,6 +9,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
@@ -59,6 +60,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -69,20 +71,20 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.graphics.drawscope.drawText
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -102,6 +104,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import kotlin.math.abs
+import kotlin.time.TimeSource
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -150,6 +153,7 @@ fun FullPlayerScreen(
 
     val fraction = if (state.durationMs > 0) scrub else 0f
     val shownPosition = (fraction * state.durationMs).toLong()
+    val lyricsPosition = rememberSmoothLyricsPosition(shownPosition, state.playing && !scrubbing)
     val baseBackground = MaterialTheme.colorScheme.surfaceContainerLowest
     val backgroundTint = palette?.primary?.let { containerOf(Color(it), dark = true) } ?: baseBackground
     val playerBackground = Brush.verticalGradient(
@@ -200,8 +204,7 @@ fun FullPlayerScreen(
                 }
             }
 
-            AlbumArt(
-                track,
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 24.dp, vertical = 12.dp)
@@ -262,9 +265,29 @@ fun FullPlayerScreen(
                                 }
                             },
                         )
-                    },
-                corner = 28.dp,
-            )
+                    }
+                    .clip(RoundedCornerShape(28.dp)),
+            ) {
+                AlbumArt(track, modifier = Modifier.fillMaxSize(), corner = 28.dp)
+                if (showLyrics) {
+                    val accent = palette?.primary?.let { Color(it) } ?: MaterialTheme.colorScheme.primary
+                    Box(
+                        Modifier
+                            .fillMaxSize()
+                            .background(lerp(Color.Black, accent, 0.18f).copy(alpha = 0.70f))
+                            .padding(16.dp),
+                    ) {
+                        LyricsPanel(
+                            data = lyrics,
+                            loading = lyricsLoading,
+                            positionMs = lyricsPosition,
+                            settings = settings,
+                            onRefresh = { refreshLyrics() },
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
+                }
+            }
 
             Spacer(Modifier.height(8.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -313,19 +336,7 @@ fun FullPlayerScreen(
             Text(formatDuration(state.durationMs), style = MaterialTheme.typography.bodyMedium)
         }
 
-        if (showLyrics) {
-            Spacer(Modifier.height(8.dp))
-            LyricsPanel(
-                data = lyrics,
-                loading = lyricsLoading,
-                positionMs = shownPosition,
-                settings = settings,
-                onRefresh = { refreshLyrics() },
-                modifier = Modifier.fillMaxWidth().weight(1f),
-            )
-        } else {
-            Spacer(Modifier.weight(1f))
-        }
+        Spacer(Modifier.weight(1f))
         Surface(
             shape = MaterialTheme.shapes.extraLarge,
             color = containerOf(MaterialTheme.colorScheme.secondary, dark = true),
@@ -628,9 +639,12 @@ private fun LyricsPanel(
                             PlaybackController.seek(line.timeMs)
                         }
                     if (isActive && line.words.isNotEmpty()) {
-                        Text(
-                            text = karaokeText(line, positionMs, MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.onSurfaceVariant),
+                        KaraokeLine(
+                            line = line,
+                            positionMs = positionMs,
                             style = style,
+                            accent = MaterialTheme.colorScheme.primary,
+                            dim = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = lineModifier,
                         )
                     } else {
@@ -648,32 +662,99 @@ private fun LyricsPanel(
     }
 }
 
-private fun karaokeText(
+@Composable
+private fun rememberSmoothLyricsPosition(positionMs: Long, running: Boolean): Long {
+    val clock = remember { TimeSource.Monotonic }
+    var smooth by remember { mutableLongStateOf(positionMs) }
+    var latest by remember { mutableLongStateOf(positionMs) }
+    var anchor by remember { mutableLongStateOf(positionMs) }
+    var startedAt by remember { mutableStateOf(clock.markNow()) }
+
+    LaunchedEffect(positionMs) { latest = positionMs }
+    LaunchedEffect(latest, running) {
+        if (abs(latest - anchor) > 300L || !running) {
+            anchor = latest
+            startedAt = clock.markNow()
+            smooth = latest
+        }
+    }
+    LaunchedEffect(running) {
+        if (!running) {
+            smooth = latest
+            return@LaunchedEffect
+        }
+        anchor = latest
+        startedAt = clock.markNow()
+        smooth = latest
+        while (true) {
+            delay(16)
+            smooth = anchor + startedAt.elapsedNow().inWholeMilliseconds
+        }
+    }
+    return smooth
+}
+
+@Composable
+private fun KaraokeLine(
     line: LyricLine,
     positionMs: Long,
-    activeColor: Color,
-    dimColor: Color,
-) = buildAnnotatedString {
-    line.words.forEach { word ->
-        val duration = word.endMs - word.timeMs
-        val glow = when {
-            positionMs < word.timeMs -> 0f
-            duration <= 0L -> 1f
-            else -> ((positionMs - word.timeMs).toFloat() / duration).coerceIn(0f, 1f)
+    style: TextStyle,
+    accent: Color,
+    dim: Color,
+    modifier: Modifier = Modifier,
+) {
+    val measurer = rememberTextMeasurer()
+    val layout = remember(line.text, style) {
+        measurer.measure(AnnotatedString(line.text), style = style, maxLines = 1)
+    }
+    val words = remember(line) { line.words.filter { it.text.isNotEmpty() } }
+    val textMatches = remember(line, words) { words.joinToString("") { it.text } == line.text }
+    val activeIndex = words.indexOfLast { positionMs >= it.timeMs }.coerceAtLeast(0)
+    val current = words.getOrNull(activeIndex)
+    val active = textMatches && current != null && positionMs >= line.timeMs
+    val progress = if (!active || current == null) {
+        0f
+    } else {
+        val duration = (current.endMs - current.timeMs).coerceAtLeast(100L)
+        ((positionMs - current.timeMs).toFloat() / duration).coerceIn(0f, 1f)
+    }
+    val startChar = if (active) (0 until activeIndex).sumOf { words[it].text.length } else 0
+    val endChar = (startChar + (current?.text?.length ?: 0)).coerceAtMost(line.text.length)
+    val startX = if (active) layout.getHorizontalPosition(startChar, true) else 0f
+    val endX = if (active) layout.getHorizontalPosition(endChar, true) else 0f
+    val wipeX = startX + (endX - startX) * progress
+    val height = with(LocalDensity.current) { layout.size.height.toDp() }
+
+    Canvas(modifier.fillMaxWidth().height(height)) {
+        val textX = when (style.textAlign) {
+            TextAlign.Center -> (size.width - layout.size.width) / 2f
+            TextAlign.End -> size.width - layout.size.width
+            else -> 0f
         }
-        withStyle(
-            SpanStyle(
-                color = lerp(dimColor, activeColor, glow),
-                shadow = if (glow > 0f) {
-                    Shadow(blurRadius = 12f * glow, color = activeColor.copy(alpha = 0.65f * glow))
-                } else {
-                    Shadow.None
-                },
-                fontWeight = if (glow > 0.45f) FontWeight.Bold else FontWeight.Normal,
+        if (!active || !textMatches) {
+            drawText(
+                layout,
+                color = if (active) accent else dim,
+                topLeft = Offset(textX, 0f),
+            )
+            return@Canvas
+        }
+        drawText(
+            layout,
+            color = dim.copy(alpha = 0.42f),
+            topLeft = Offset(textX, 0f),
+        )
+        val band = 24f
+        drawText(
+            layout,
+            brush = Brush.linearGradient(
+                colors = listOf(accent, accent, dim, dim),
+                start = Offset(textX + wipeX - band, 0f),
+                end = Offset(textX + wipeX + band, 0f),
             ),
-        ) {
-            append(word.text)
-        }
+            shadow = Shadow(blurRadius = 12f, color = accent.copy(alpha = 0.7f)),
+            topLeft = Offset(textX, 0f),
+        )
     }
 }
 

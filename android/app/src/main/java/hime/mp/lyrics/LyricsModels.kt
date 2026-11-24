@@ -9,29 +9,7 @@ data class LyricsData(val source: String, val lines: List<LyricLine>) {
 }
 
 private val lrcTime = Regex("""\[(\d{1,3}):(\d{2})(?:[.:](\d{1,3}))?\]""")
-private val wordTokens = Regex("""\S+\s*""")
 private val whitespace = Regex("""[ \t]+""")
-
-fun distributeWordTiming(lines: List<LyricLine>): List<LyricLine> {
-    val sorted = lines.sortedBy { it.timeMs }
-    return sorted.mapIndexed { index, line ->
-        if (line.timeMs < 0 || line.words.isNotEmpty()) return@mapIndexed line
-        val tokens = wordTokens.findAll(line.text).map { it.value }.toList()
-        if (tokens.isEmpty()) return@mapIndexed line
-        val nextStart = sorted.getOrNull(index + 1)?.timeMs?.takeIf { it > line.timeMs }
-        val end = nextStart ?: line.timeMs + tokens.size * 320L
-        val span = (end - line.timeMs).coerceAtLeast(tokens.size.toLong())
-        val step = span / tokens.size
-        val words = tokens.mapIndexed { tokenIndex, token ->
-            LyricWord(
-                token,
-                line.timeMs + tokenIndex.toLong() * step,
-                line.timeMs + (tokenIndex + 1L) * step,
-            )
-        }
-        line.copy(words = words)
-    }
-}
 
 fun parseLrc(input: String): List<LyricLine> {
     val lines = mutableListOf<LyricLine>()
@@ -47,7 +25,7 @@ fun parseLrc(input: String): List<LyricLine> {
             lines += LyricLine(minutes * 60_000L + seconds * 1_000L + fraction, text)
         }
     }
-    return distributeWordTiming(lines)
+    return lines.sortedBy { it.timeMs }
 }
 
 fun parsePlainLyrics(input: String): List<LyricLine> =
@@ -115,8 +93,7 @@ fun parseTtml(input: String): List<LyricLine> {
                 text.toString().replace(whitespace, " ").trim()
             }
             if (lineText.isNotBlank()) {
-                val line = LyricLine(timeMs, lineText, timedWords)
-                lines += if (timedWords.isEmpty()) distributeWordTiming(listOf(line)).first() else line
+                lines += LyricLine(timeMs, lineText, timedWords)
             }
         }
         event = parser.next()
