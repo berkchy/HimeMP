@@ -555,6 +555,7 @@ private fun LyricsPanel(
 ) {
     val listState = rememberLazyListState()
     var lastActive by remember { mutableStateOf(-1) }
+    var headerHeightPx by remember { mutableStateOf(0) }
     val horizontalAlignment = when (settings["lyricsAlignment"]) {
         "start" -> Alignment.Start
         "end" -> Alignment.End
@@ -597,30 +598,44 @@ private fun LyricsPanel(
 
     BoxWithConstraints(modifier.clipToBounds()) {
         val halfHeight = maxHeight / 2
-        LaunchedEffect(active, autoScroll, data.lines, maxHeight) {
+        val density = LocalDensity.current
+        val coverCenterPx = with(density) { halfHeight.toPx() }
+        LaunchedEffect(active, autoScroll, data.lines, maxHeight, headerHeightPx) {
             if (!autoScroll || data.lines.isEmpty()) return@LaunchedEffect
-            var item = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == active }
-            if (item == null) {
+            val anchorPx = (coverCenterPx - headerHeightPx).coerceAtLeast(1f)
+            fun offsetToCenter(): Float? {
+                val info = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == active } ?: return null
+                return info.offset + info.size / 2f - anchorPx
+            }
+            if (listState.layoutInfo.visibleItemsInfo.none { it.index == active }) {
                 runCatching { listState.scrollToItem(active) }
                 withFrameNanos {}
                 withFrameNanos {}
-                item = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == active }
             }
-            val info = item ?: return@LaunchedEffect
-            val anchor = listState.layoutInfo.viewportSize.height / 2f
-            val center = info.offset + info.size / 2f
-            val offset = center - anchor
-            if (abs(offset) > 1f) {
-                if (lastActive == -1 || abs(active - lastActive) > 1 || abs(offset) > anchor) {
+            val jump = lastActive == -1 || abs(active - lastActive) > 1
+            if (jump) {
+                repeat(4) {
+                    val offset = offsetToCenter() ?: return@repeat
+                    if (abs(offset) <= 1f) return@repeat
                     listState.scrollBy(offset)
-                } else {
+                    withFrameNanos {}
+                }
+            } else {
+                val offset = offsetToCenter() ?: return@LaunchedEffect
+                if (abs(offset) > 1f) {
                     runCatching { listState.animateScrollBy(offset, tween(240)) }
+                    withFrameNanos {}
+                    val residual = offsetToCenter() ?: 0f
+                    if (abs(residual) > 2f) listState.scrollBy(residual)
                 }
             }
             lastActive = active
         }
         Column(Modifier.fillMaxSize()) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.onSizeChanged { headerHeightPx = it.height },
+            ) {
                 Text(
                     "Lyrics · ${data.source}",
                     style = MaterialTheme.typography.labelSmall,
