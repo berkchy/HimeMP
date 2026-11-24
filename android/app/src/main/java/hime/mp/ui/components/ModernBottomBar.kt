@@ -46,7 +46,7 @@ data class BottomNavItem(val icon: ImageVector, val label: String)
 @Composable
 fun ModernBottomBar(
     items: List<BottomNavItem>,
-    selected: Int,
+    selectedIndex: Int,
     onSelect: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -75,7 +75,7 @@ fun ModernBottomBar(
             val itemWidth = maxWidth / items.size.coerceAtLeast(1)
             val indicatorWidth = (itemWidth - 24.dp).coerceIn(44.dp, 88.dp)
             val indicatorX by animateDpAsState(
-                targetValue = itemWidth * selected + (itemWidth - indicatorWidth) / 2,
+                targetValue = itemWidth * selectedIndex + (itemWidth - indicatorWidth) / 2,
                 animationSpec = spring(dampingRatio = 0.82f, stiffness = 420f),
                 label = "bottomNavIndicator",
             )
@@ -90,7 +90,7 @@ fun ModernBottomBar(
 
             Row(Modifier.fillMaxWidth()) {
                 items.forEachIndexed { index, item ->
-                    val isSelected = index == selected
+                    val isSelected = index == selectedIndex
                     val scale by animateFloatAsState(
                         targetValue = if (isSelected) 1.08f else 1f,
                         animationSpec = motionSpec,

@@ -106,6 +106,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
@@ -246,7 +247,7 @@ fun FullPlayerScreen(
                     onAccent = onAccent,
                     onChange = { showLyrics = it == 1 },
                 )
-                CircularGlassButton(Icons.Default.Cast, "Output") { showQueue = true }
+                CircularGlassButton(Icons.Default.Cast, "Output", onClick = { showQueue = true })
             }
 
             Box(
@@ -813,7 +814,7 @@ private fun BlurredArtwork(
     Canvas(modifier) {
         val image = bitmap ?: return@Canvas
         drawIntoCanvas { canvas ->
-            canvas.drawBitmap(
+            canvas.nativeCanvas.drawBitmap(
                 image.asAndroidBitmap(),
                 null,
                 RectF(0f, 0f, size.width, size.height),

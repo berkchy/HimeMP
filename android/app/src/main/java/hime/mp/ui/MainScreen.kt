@@ -183,7 +183,7 @@ fun MainScreen() {
                             BottomNavItem(Icons.Default.List, "Playlists"),
                             BottomNavItem(Icons.Default.Settings, "Settings"),
                         ),
-                        selected = selectedTab,
+                        selectedIndex = selectedTab,
                         onSelect = { page ->
                             fullPlayer = false
                             goToPage(page)
